@@ -29,7 +29,7 @@ CLI 的全部价值是三件事：<strong>选画像 → 拼消息 → 交给 age
 因为它们拼的是同一种消息、走同一个 agent。如果 CLI 自己实现一套执行逻辑，
 三入口就会各自漂移（超时不一样、画像注入不一样）——Easel 历史上真出过这问题
 （timeouts.py 的 docstring 自述：此前三处各写各的，skill=900s、web=300s、cli=7200s，
-同一任务经不同入口被不同超时掐断）。收敛到单一真相源后才一致。</p>
+同一任务经不同入口被不同超时掐断）。收敛到单一真相源后才一致：三个入口按档位取值——制作层 PRODUCE=7200s、直接执行 DIRECT=300s、chat 沿用 PRODUCE。</p>
 
 <h2>二、调用链全景（逐行走读）</h2>
 <pre><code>easel skill social-content -i "写条微博" -p 我的账号
@@ -39,7 +39,7 @@ CLI 的全部价值是三件事：<strong>选画像 → 拼消息 → 交给 age
     ③ 拼消息 = persona_prefix(画像) + "请执行 /social-content" + 输入
     ④ openclaw --profile easel agent
          --session-key agent:main:skill-&lt;毫秒时间戳&gt;
-         --timeout-ms 7200_000        ← timeouts.py TIMEOUT_PRODUCE
+         --timeout 7200                # 秒；timeouts.py TIMEOUT_PRODUCE
     ⑤ stdout 过滤 ANSI 色码和日志行，打印 agent 输出</code></pre>
 <p>逐站细看：<strong>①</strong> 找不到时自动补 <code>skill-</code> 前缀——用户体验细节
 （用户记不住哪些技能带前缀），一行代码消除一类"技能不存在"错误。
@@ -51,7 +51,7 @@ session-key 带毫秒时间戳：每次 <code>easel skill</code> 是独立会话
 
 <h2>三、三个"为什么"（精读时找答案）</h2>
 <p><strong>① 为什么 openclaw_cmd.py 优先 <code>[node, /path/to/openclaw.mjs]</code> 而不是 PATH 里的可执行文件？</strong><br>
-Windows 的 openclaw 命令是 <code>.cmd</code> shim（批处理转接器），CreateProcess 跑不了它，
+Windows 的 openclaw 命令是 <code>.cmd</code> shim（批处理转接器），CreateProcess（Windows 创建进程的系统调用）跑不了它，
 且多行消息参数会被截断。直接找 .mjs 入口用 node 跑 = 跨平台确定行为。63 行的模块解决一个
 平台差异问题——<strong>每个坑一个专属小模块</strong>，是 Easel 工程风格的缩影。</p>
 <p><strong>② 为什么超时常量单独放 timeouts.py（13 行）？</strong><br>

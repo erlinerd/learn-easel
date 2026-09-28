@@ -10,7 +10,7 @@
 <header class="course">
   <div class="kicker">M7 输出 · L20 · 毕业课</div>
   <h1>实现最小六件套 agent，并逐件自评</h1>
-  <p class="src">45 min 规划 + 1.5 天实现 · 从读别人到建自己的</p>
+  <p class="src">45 min 规划 + 两天实现（四个半天）· 从读别人到建自己的</p>
 </header>
 
 <p class="src">🎒 预备知识：完成上一课「L19」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
@@ -26,7 +26,7 @@ loop 是一切的地基（没有它什么都跑不起来）→ 工具其次（lo
 闸门（真发前必须有，但可以最后接）。这个顺序保证<strong>每一步结束都有一个能跑的东西</strong>——
 Day 1 上午结束你就有一个"会调工具的 loop"，而不是等六天看到全貌。</p>
 
-<h2>二、三日施工计划（把 1.5 天摊开）</h2>
+<h2>二、两日施工计划（四个半天摊开）</h2>
 <table>
   <tr><th>时段</th><th>做什么</th><th>完成标志</th></tr>
   <tr><td>Day1 上午</td><td>loop.py：双层循环 + 工具执行 + isError 回填（A1 的 30 行起步）</td><td>模型能调用一个假工具并自我纠错</td></tr>
@@ -41,7 +41,7 @@ Day 1 上午结束你就有一个"会调工具的 loop"，而不是等六天看�
                        步数上限 + 超时（铁律③）
 skills/        技能目录 frontmatter 路由 + SKILL.md 触发加载（~40 行）
 agents.md      规则 ≤30 行（抄 Easel 六条的骨架，L03）
-tools.py       2-3 个真实工具（read_file / run_cmd / 你的领域工具，按 A4 设计）
+tools.py       ~30 行  2-3 个真实工具（read_file / run_cmd / 你的领域工具，按 A4 设计）
 guard.py       ~40 行 出站扫描：命中密钥模式 → exit 7（L14 fail-closed）
 memory.md      会话记忆文件，只追加（~20 行读写，A6 文件形态）</code></pre>
 <p>对照 C3（现 A1）那 20 行最小 agent：loop.py 是它的成年版（+上限/超时/isError），
@@ -61,6 +61,10 @@ skills/ 是 A2 第三代封装的微缩，guard.py 是 A12 阶梯第 4 级的落
 <strong>③ 没有 dry-run</strong>——不可逆操作直接真发（A12 阶梯 3 级，L13 三段式）。<br>
 <strong>④ 系统提示塞满所有能力</strong>——应该 frontmatter 路由 + 按需加载（A2/L06 token 算术）。<br>
 <strong>⑤ 历史重写式截断</strong>——应该摘要追加（A3 铁律②，L18 只追加三重收益）。</p>
+
+<h2>检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
 
 <h2>六、复盘 rubric（对照两份基准逐件打分）</h2>
 <table>
@@ -85,5 +89,20 @@ skills/ 是 A2 第三代封装的微缩，guard.py 是 A12 阶梯第 4 级的落
   实现中任何卡点，回对话里问老师——毕业设计阶段老师随叫随到。
 </footer>
 <script src="../assets/sidebar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 你的 agent 工具调用抛异常导致崩溃，按课程铁律应该？",
+  opts: ["isError 结果回填给模型", "异常直接抛给用户", "立刻终止整个进程"],
+  answer: 0,
+  why: "失败是消息不是异常（A3 铁律①/L17）：错误回填，模型下一轮自我纠正。"
+});
+Quiz.render("q2", {
+  q: "2. 会话记忆文件 memory.md 的写入纪律是？",
+  opts: ["增量合并保留冲突痕迹", "每次整体重写最干净", "全部向量化后存数据库"],
+  answer: 0,
+  why: "沉淀判据 + 增量合并（A6）：允许合并但保留冲突痕迹，拒绝静默覆盖。"
+});
+</script>
 </body>
 </html>

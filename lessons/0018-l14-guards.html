@@ -46,7 +46,7 @@ content_guard 是 fail-closed 的教科书实现。</p>
 <p><strong>为什么 fail-closed 而不是告警</strong>：告警可以被忽略、被"这次特殊"跳过——
 人的注意力是稀缺资源，天天响的警报等于没有警报（A15 警报疲劳）。
 exit 7 不可协商：进程直接死，发布必不发生。配套的守护设计也值得学：
-<strong>全库 12 处</strong>真发脚本在 <code>--exec</code> 前强制 <code>guard_or_die()</code>，
+<strong>全库 13 处调用（其中 12 处在真发路径）</strong>的脚本在 <code>--exec</code> 前强制 <code>guard_or_die()</code>，
 而 validate_skills.py 的 PUBLISH_SCRIPT_CONTRACTS 校验发布脚本没把这个调用"改丢"——
 <strong>安全标记本身也有守护</strong>（防未来贡献者重构时不小心删掉，防的就是"改丢"这类慢 性事故）。</p>
 

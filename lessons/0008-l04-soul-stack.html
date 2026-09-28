@@ -10,7 +10,7 @@
 <header class="course">
   <div class="kicker">M2 大脑层 · L04</div>
   <h1>SOUL.md 与四层提示词栈：常驻层为什么必须短</h1>
-  <p class="src">45 min · 精读 SOUL.md(31行) + docs/prompt-stack.md</p>
+  <p class="src">45 min · 精读 SOUL.md(30行) + docs/prompt-stack.md</p>
 </header>
 
 <p class="src">🎒 预备知识：完成上一课「L03」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
@@ -40,7 +40,7 @@
 （月级别）→ 路径（机器级别）→ 技能（周级别）。变化快的进常驻 = 缓存全废（L2 复利账单 +
 A5 稳定前缀）；写错层 = 维护时找不着北。<strong>分层 = 按变化频率和加载时机切分职责</strong>。</p>
 
-<h2>三、SOUL.md 逐句精读（31 行里的关键句）</h2>
+<h2>三、SOUL.md 逐句精读（30 行里的关键句）</h2>
 <p><strong>"先想怎么帮他做成，而不是'这个我做不了'"（:16）</strong>——人格层的总纲。
 这不是鸡汤：执行型 agent 最常见的失效模式是模型<strong>诉苦式拒答</strong>（"作为 AI 我无法……"）。
 这句把默认倾向扭向"想办法"。</p>
@@ -57,7 +57,7 @@ prompt 工程里关键规则"一次抽象 + 一次具体"是合理冗余——�
 人格是概率性直觉（"不要给系统打广告"的自曝倾向）。两层缺一不可——闸门管枚举的，人格管没枚举的。</p>
 
 <h2>四、常驻层短的第二个理由：prompt cache（数字版）</h2>
-<p>L2/A5 讲过原理，这里算一笔 Easel 的实际账：SOUL 31 行 + AGENTS 111 行 + CONTEXT
+<p>L2/A5 讲过原理，这里算一笔 Easel 的实际账：SOUL 30 行 + AGENTS 110 行 + CONTEXT
 ≈ 常驻 4–5K token。如果命中缓存，这部分每轮成本约 1/10；如果每次内容有变（比如把
 "当前热门话题"写进 SOUL），<strong>每轮全价 + 前缀重建</strong>。OpenClaw 源码把这件事写成了
 军规级注释（system-prompt.ts:1146）："Approval UI and owner identity vary by turn,
@@ -78,7 +78,7 @@ so keep both below the stable prefix"——可变内容必须排在稳定边界�
 <h2>七、出口检验</h2>
 <p>指出 SOUL.md 三处"刻意不写"，并说明每处的下放去向（写到哪一层/哪个机制）。
 拓展题：如果你的 agent 人格层写了具体技能名，三个月后会出什么事？</p>
-<p><strong>一手源：</strong><code>openclaw/workspace/SOUL.md</code> + <code>docs/prompt-stack.md</code>（19 行，设计原则全在里面）。</p>
+<p><strong>一手源：</strong><code>openclaw/workspace/SOUL.md</code> + <code>docs/prompt-stack.md</code>（48 行，设计原则全在里面）。</p>
 
 <footer class="nav">
   <a href="0007-l03-agents-md.html">← L03</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0009-l05-persona-injection.html">L05 画像注入机制</a><br>

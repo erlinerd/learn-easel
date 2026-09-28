@@ -24,8 +24,8 @@
 <pre><code>① 模型流式输出 toolcall_end 事件
 ② validateToolArguments 参数验证 + beforeToolCall 准入（block:true → 合成失败结果）
 ③ 串行 or 并行？config.toolExecution 与批次内 hasSequentialToolCall 决定（:498-510）
-④ execute(toolCallId, args, signal) —— 进程内函数；MCP 工具包装成同形态（:1151-1163）
-⑤ 异常 → isError:true 的结果消息（不是抛给用户！:1140-1147）
+④ execute(toolCallId, args, signal) —— 进程内函数；MCP 工具也包装成统一 execute 形态（:1151-1163）
+⑤ 异常 → isError:true 的结果消息（不是抛给用户！:1114-1131 catch 转化）
 ⑥ role:"toolResult" 消息 push 回 context.messages（:327 / 流式路径 :185-191）</code></pre>
 <p>L7 讲的是"协议上该怎么往返"，本课看"harness 在每站插了什么"。重点看两段真实代码。</p>
 
@@ -56,7 +56,7 @@
   timestamp: Date.now(),
 };</code></pre>
 <p>注意 <code>isError</code> 是消息的<strong>一等字段</strong>，不是异常堆栈——失败被结构化了，
-模型下一轮能精确读到"哪个调用（toolCallId）的什么错误"。再看 :1140-1147 的另一半：
+模型下一轮能精确读到"哪个调用（toolCallId）的什么错误"。再看 :1114-1131 与 :1173-1191 的另一半：
 执行抛出的真异常会被 catch 并转成同样的 isError 结果。两路失败汇成一个协议。</p>
 
 <h2>四、钩子链：harness 的扩展点（你自己加功能的接口）</h2>
@@ -88,7 +88,7 @@ afterToolCall/afterToolOutcome 上（agent-session-base.ts），agent-loop.ts �
 到模型在下一轮看到什么——标注 isError 在哪一站被设置、流中执行路径和批次路径分别在哪回填。
 再答：如果要加"付费工具必须先过人工审批"，插哪个钩子、返回什么？
 发到对话里我批改。</p>
-<p><strong>一手源：</strong>agent-loop.ts:443 起 executeToolCalls + :1140-1147 异常转结果段。</p>
+<p><strong>一手源：</strong>agent-loop.ts:443 起 executeToolCalls + :1114-1131 异常转结果段。</p>
 
 <footer class="nav">
   <a href="0020-l16-loop-reading.html">← L16</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0022-l18-compaction.html">L18 compaction 与持久化</a><br>

@@ -44,8 +44,8 @@ ls easel easel/commands web openclaw</code></pre>
   <tr><td class="mono">skills/openclaw/</td><td>能力系统（114 技能）</td><td>agent 按需读取 SKILL.md</td><td>随便打开一个 SKILL.md（L06）</td></tr>
   <tr><td class="mono">skills/shared/</td><td>确定性厚脚本（48 个）</td><td>所有碰环境的 IO</td><td>scripts/ 文件名清单（L07）</td></tr>
   <tr><td class="mono">profiles/</td><td>记忆分域</td><td>每账号六维画像</td><td>_template/ 看六维结构</td></tr>
-  <tr><td class="mono">outputs/</td><td>产物与状态</td><td>成品 + 系统目录</td><td>注意 _ 前缀目录的约定</td></tr>
-  <tr><td class="mono">openclaw/</td><td>大脑配置</td><td>AGENTS.md/SOUL.md + sync.sh</td><td>workspace/ 两个 md（L03/L04）</td></tr>
+  <tr><td class="mono">outputs/</td><td>产物与状态</td><td>成品 + 系统目录（_ 目录首次运行后才出现）</td><td>注意 _ 前缀目录的约定</td></tr>
+  <tr><td class="mono">openclaw/</td><td>大脑配置</td><td>AGENTS.md/SOUL.md + sync.sh</td><td>workspace/ 两个 md（L03/L04；CONTEXT.md 由 sync.sh 生成）</td></tr>
 </table>
 <p><strong>outputs/ 的下划线约定</strong>值得单独说：<code>_sessions/ _login/ _publish/ _inbox/</code>
 这些下划线开头目录是<strong>系统状态</strong>（会话快照/登录二维码/发布状态/上传附件），

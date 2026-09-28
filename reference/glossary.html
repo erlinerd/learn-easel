@@ -108,6 +108,11 @@
 <tr><td>headless / 有头</td><td>无头浏览器不显示窗口（省资源、指纹略异）；有头即正常窗口。</td></tr>
 <tr><td>SOUL.md / AGENTS.md</td><td>OpenClaw 工作区的两个人格/规则常驻文件：SOUL 管人格语气，AGENTS 管行为规则。</td></tr>
 <tr><td>课号约定</td><td>L1–L7＝前置第一部分；A1–A17＝前置第二部分；正课＝L01–L20（两位数）。文件名是历史编号，以侧边目录为准。</td></tr>
+<tr><td>React</td><td>前端 UI 框架；Easel 的 Web 工作台前端用它构建。</td></tr>
+<tr><td>CloakBrowser</td><td>Easel 使用的反检测浏览器内核；无头被风控拦截时的有头降级路径。</td></tr>
+<tr><td>steering / followUp</td><td>向运行中的 agent 插话的两种方式：steering 打断当前工具批次，followUp 排队等下轮。</td></tr>
+<tr><td>taint（污染标记）</td><td>工具结果若可疑会标记整轮 turn，影响后续重放与审批判断。</td></tr>
+<tr><td>Responses API</td><td>OpenAI 的新版接口协议；其 endTurn=false 语义允许模型"话没说完"时续跑。</td></tr>
 </table>
 
 <footer class="nav">
