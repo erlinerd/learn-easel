@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>速查 · Agent 部署形态分类法</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 参考文档</div>
+  <h1>Agent 部署形态分类法（速查）</h1>
+</header>
+
+<p>判断任何 agent 产品"端侧还是云端"，不要二选一站队。先把 agent 拆成<strong>五个组件</strong>，
+逐个问"这个进程/这份数据在哪台机器上"。</p>
+
+<h2>五组件拆解清单</h2>
+<table>
+  <tr><th>#</th><th>组件</th><th>问什么</th><th>常在哪</th></tr>
+  <tr><td>1</td><td><strong>编排 / Agent 循环</strong></td><td>跑决策循环的进程在哪监听？</td><td>本机守护进程 或 云端沙箱</td></tr>
+  <tr><td>2</td><td><strong>工具执行</strong></td><td>shell / 浏览器 / 文件操作在谁的 CPU 上跑？</td><td>与编排同侧（决定性证据）</td></tr>
+  <tr><td>3</td><td><strong>状态与记忆</strong></td><td>会话历史、登录态、产物文件落在哪个文件系统？</td><td>与编排同侧</td></tr>
+  <tr><td>4</td><td><strong>模型推理</strong></td><td>LLM 调用打到哪里？</td><td>几乎总是云端 API（或本地 Ollama）</td></tr>
+  <tr><td>5</td><td><strong>重资源生成</strong></td><td>视频/音乐/图像生成调什么？</td><td>云端 API 或本地 FFmpeg 等</td></tr>
+</table>
+
+<aside class="note">组件 1–3 决定分类，组件 4–5 几乎不影响——因为"模型在云端"是当今常态，
+不构成把 agent 归为云端的理由。</aside>
+
+<h2>三档分类</h2>
+<table>
+  <tr><th>形态</th><th>定义</th><th>代表</th></tr>
+  <tr><td><strong>端侧 harness + 云端模型</strong><br>（local-first）</td><td>编排、工具、状态全在本机；只把 LLM 请求发出去</td><td>Claude Code、Codex CLI、OpenClaw、<strong>Easel</strong></td></tr>
+  <tr><td><strong>云端托管 agent</strong></td><td>沙箱/VM 在云上，工具与状态都在云；用户只看界面</td><td>Manus、Devin、Claude 云端会话</td></tr>
+  <tr><td><strong>纯端侧</strong></td><td>连模型都在本机跑</td><td>Ollama + 工具调用（少见，能力受限）</td></tr>
+</table>
+
+<h2>快速判据（按可信度排序）</h2>
+<p>① 看<strong>编排进程的监听地址</strong>——绑 <code>loopback/127.0.0.1</code> 基本是端侧；<br>
+② 看<strong>登录态/状态文件</strong>在哪——<code>~/.xxx</code> 用户目录 = 端侧；<br>
+③ 看<strong>浏览器/脚本进程</strong>的宿主——端侧 agent 用你本机的 Chrome/FFmpeg；<br>
+④ 别只看模型 API 在哪——那只说明"推理在云"，不说明 agent 在云。</p>
+
+<h2>端侧 vs 云端托管的权衡</h2>
+<table>
+  <tr><th>维度</th><th>端侧 harness</th><th>云端托管</th></tr>
+  <tr><td>隐私</td><td>账号数据不出本机</td><td>全部状态上传云</td></tr>
+  <tr><td>平台风控 / IP</td><td>家庭/办公 IP，干净</td><td>机房 IP，易触发风控</td></tr>
+  <tr><td>长任务</td><td>依赖本机开机</td><td>可挂机运行</td></tr>
+  <tr><td>可访问性</td><td>仅本机（或局域网）</td><td>随处可访问</td></tr>
+  <tr><td>媒体处理</td><td>本地 FFmpeg，零上传</td><td>云算力，输入输出都走网</td></tr>
+</table>
+
+<footer class="nav">
+  相关：<a href="../lessons/0001-local-vs-cloud-agent.html">第 1 课 · Easel 是端侧还是云端</a><br>
+  上课时有疑问随时问你的 agent 老师。
+</footer>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L15 · 拟人化与风控</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M5 执行层 · L15</div>
+  <h1>拟人化与风控：反检测的克制 · M5 毕业课</h1>
+  <p class="src">45 min · human_pace.py 全文精读 + persona_gate 的"永不阻断"哲学</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L14」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>反检测的正确姿态是<strong>克制</strong>——按语义分档的随机停顿 +
+  原生输入事件，而不是激进的指纹伪装。同时看一个反差设计：persona_gate <strong>只提醒、永不阻断</strong>——
+  安全分级里"什么不该硬拦"和"什么必须硬拦"同样重要。
+</div>
+
+<h2>一、基础：平台怎么识别机器人（知己知彼）</h2>
+<p>反检测之前要先懂检测。平台区分人与机器主要看两类信号：</p>
+<p><strong>① 指纹（你是谁）</strong>：浏览器暴露一堆可编程读取的特征——
+<code>navigator.webdriver</code>（自动化框架会置 true）、UA 串、字体列表、Canvas 渲染差异、
+插件列表。无头浏览器指纹更"干净"（少了很多真人环境的杂讯），反而更扎眼。</p>
+<p><strong>② 行为（你怎么动）</strong>：真人操作的特征是<strong>不均匀</strong>的——打字有快有慢、
+读完页面才点按钮、填完表单会通读一遍再提交。机器的特征是<strong>均匀</strong>的：
+毫秒级精确间隔、表单一出现立刻填、填完 0ms 提交。匀速 = 机器的签名。</p>
+<p>理解了②就懂了拟人化的本质：<strong>不是"装得像人"，是"消除机器的均匀性签名"</strong>。</p>
+
+<h2>二、human_pace.py 全文精读（真实常量表）</h2>
+<pre><code># human_pace.py:25-29（源码原文）
+"task-switch":  (1800, 4500),   # 从一个任务切到另一个（打开页/进入编辑器）
+"field-switch": (650, 1800),    # 字段之间切换（标题→简介）
+"verification": (1200, 3000),   # 验证相关动作之间
+"review":       (2000, 5000),   # 提交前的复核（再加内容长度加权）
+"commit":       (1200, 3200),   # 复核完成到点下提交的反应时间</code></pre>
+<p>逐档读语义：<strong>task-switch 最长</strong>（1.8–4.5s）——人切换任务要"缓一下"；
+<strong>field-switch 最短</strong>（0.65–1.8s）——字段间移动焦点是流畅的；
+<strong>review 有加权</strong>：<code>min(8000, 内容长度 × 12ms)</code>——文案越长人读得越久，
+机器匀速填完就提交是最大破绽；<strong>commit</strong> 单独一档——按下发布键前最后一犹豫。</p>
+<p>神来之笔在采样函数（:33-39）：<code>lo + (hi - lo) * centered</code>，其中
+<strong>centered 是两个随机数的均值</strong>。为什么不用单个随机数？均匀分布的单样本
+经常落在区间端点附近——停顿总是"很接近上限"或"很接近下限"，分布形状本身就是特征。
+均值把分布<strong>推向中央</strong>（中心极限定理的微缩版），更像真人迟疑的自然聚拢。
+一行代码的统计学。</p>
+
+<h2>三、persona_gate 为什么永不阻断（分级哲学）</h2>
+<p>现在看一个反差设计。content_guard（安全）命中密钥 → exit 7 硬拦；
+persona_gate（人设一致性）评分 &lt;80 → 只 warn 展示偏离。为什么不一视同仁都硬拦？
+AGENTS.md 写明：<strong>用户已明确要发布时继续执行，不额外索要确认</strong>。
+分级逻辑：泄露密钥是<strong>不可逆伤害</strong> → 拦；人设偏离是<strong>质量瑕疵</strong> → 提醒。
+把两类风险混为一谈的 agent，用户很快就学会无脑点"确认"——<strong>警报疲劳是硬闸门的敌人</strong>
+（A15）。确认机制的价值 = 用户真的会看，而"真的会看"是稀缺资源，只能配给真正不可逆的事。</p>
+<p>评分本身也写进了 AGENTS.md：人设检查必须优先比较<strong>账号定位、内容赛道、内容形式和目标受众</strong>，
+"不能只因语气/用词相似给跨赛道内容高分"——防的是模型走捷径（文风像≠人设合）。
+发布后还要 record 留痕（评分/结论/偏离点）——人设决策也可审计。</p>
+
+<h2>四、风控的三道防线（M5 收官串讲）</h2>
+<p>① <strong>事前</strong>：登录态用真浏览器 profile（家庭 IP）+ 拟人化输入；<br>
+② <strong>事中</strong>：IP 风控 300012 显式报错不盲试（L13）；<br>
+③ <strong>事后</strong>：对账 unverified 诚实标注 + publish-log 留痕（L14）。</p>
+<p>三道防线的共性：<strong>都不试图"赢得对抗"，只求"输得起"</strong>——被封号是可能结局，
+所以测试号、小流量、人工复核高风险操作是 AGENTS.md 的明文要求。对抗性系统的第一原则：
+不做无法承受其反噬的对抗。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：停顿只加在"点击"上。</strong>真人慢的地方是<strong>读</strong>（review）不是点；
+只在 click 前加延迟，节奏画像依然机器。<strong>坑 2：所有用户一个随机种子。</strong>
+两个账号的停顿序列完全相同 = 关联特征，随机性要真随机。<strong>坑 3：把拟人化当安全边界。</strong>
+它降低的是概率不是消灭风险——永远有被封号的账要算，风控预算要做进产品设计。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>说清两个"为什么"：为什么停顿样本取两个随机数的均值？为什么 persona_gate 刻意不做硬拦？
+然后给"评论自动回复"设计安全分级（哪些硬拦/哪些提醒）。通过即 M5 毕业，进入 M6 内核层。</p>
+<p><strong>一手源：</strong>human_pace.py（很短）+ AGENTS.md「对外发布安全」节。</p>
+
+<footer class="nav">
+  <a href="0018-l14-guards.html">← L14</a> · <a href="../reference/syllabus.html">大纲</a> · 下一模块：<a href="0020-l16-loop-reading.html">M6 内核层 · L16 loop 精读</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 停顿时长取两个随机样本的均值是为了？",
+  opts: ["分布更接近真人", "让代码行数更少", "减少系统的随机熵"],
+  answer: 0,
+  why: "均匀单样本常落在区间端点附近；均值让分布集中在中间，更像人的迟疑。"
+});
+Quiz.render("q2", {
+  q: "2. persona_gate 只提醒不阻断的核心理由是？",
+  opts: ["人设偏离是质量瑕疵", "评分算法不够准确", "平台规则没有要求"],
+  answer: 0,
+  why: "与不可逆的安全伤害分级处理；什么都要确认会导致警报疲劳，硬闸门反而失效。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

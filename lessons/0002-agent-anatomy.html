@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M1 入门 · Agent 的解剖学：六件套构造蓝图</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M1 项目本体 · 入门课</div>
+  <h1>Agent 的解剖学：六件套构造蓝图</h1>
+  <p class="src">45 min · 前置课的 23 个概念在这里合成一张图，然后拿去解剖 Easel</p>
+</header>
+
+<div class="verdict">
+  <strong>本课唯一结论：</strong>任何 LLM agent = <strong>六件套</strong>——
+  ① Harness（循环）② 提示词栈 ③ 能力系统 ④ LLM-脚本分工 ⑤ 记忆与状态 ⑥ 安全边界。
+  前置课你学的每个概念都有一个家：这张表就是地图。
+</div>
+
+<h2>一、基础：为什么需要一张"构造蓝图"</h2>
+<p>前置课你学了一堆零件：loop（A3）、技能（A2）、记忆（A6）、闸门（A12/A13）……
+但零件清单 ≠ 整机图纸。看一个真实 agent 仓库（几万行代码、几十个目录）时，
+新手的问题是<strong>没有坐标系</strong>：每个文件都认识，拼起来不知道是什么。
+六件套就是坐标系：任何 agent 无论多复杂，都由这六个构造块组成，
+<strong>每个文件、每个目录最终都能挂到某一件上</strong>。挂不上的，要么是废话要么是宝藏——
+两种都值得你停下来看一眼。</p>
+
+<h2>二、六件套 × 前置课概念的家谱图</h2>
+<table>
+  <tr><th>#</th><th>构造块</th><th>一句话职责</th><th>前置课里学过的零件</th><th>Easel 的实现</th></tr>
+  <tr>
+    <td>1</td><td><strong>Harness（运行时）</strong></td>
+    <td>模型外的运行时容器</td>
+    <td>loop/三条铁律（A3）、并发隔离（A9）、harness 选型（A17）</td>
+    <td>借 OpenClaw gateway（loopback:18789）</td>
+  </tr>
+  <tr>
+    <td>2</td><td><strong>提示词栈</strong></td>
+    <td>每一轮让模型看到什么</td>
+    <td>上下文工程四原则（A5）、消息协议（L4）、注意力衰减</td>
+    <td>SOUL→AGENTS→CONTEXT→SKILL 四层 + 画像内联</td>
+  </tr>
+  <tr>
+    <td>3</td><td><strong>能力系统</strong></td>
+    <td>能力怎么声明/路由/加载</td>
+    <td>Tool/MCP/Skill 三代（A2）、渐进披露（A5）</td>
+    <td>114 个技能目录，frontmatter 路由</td>
+  </tr>
+  <tr>
+    <td>4</td><td><strong>LLM-脚本分工</strong></td>
+    <td>决策归模型，确定性 IO 归代码</td>
+    <td>幻觉与软失败（L5/A13）、精确计数代码化（L2）</td>
+    <td>"prompt 薄壳 + 确定性厚脚本"：48 个共享脚本</td>
+  </tr>
+  <tr>
+    <td>5</td><td><strong>记忆与状态</strong></td>
+    <td>会话持久化 + 长期记忆作用域</td>
+    <td>四种记忆形态（A6）、compaction（L2/L18 预告）</td>
+    <td>会话 jsonl 钉死；画像分域记忆；全局留空</td>
+  </tr>
+  <tr>
+    <td>6</td><td><strong>安全边界</strong></td>
+    <td>闸门、确认、对账、留痕</td>
+    <td>防御阶梯（A12）、fail-closed（A13）、证据链（A16）</td>
+    <td>content_guard + dry-run + readback 对账</td>
+  </tr>
+</table>
+
+<h2>三、一条消息走完六件套（把前置课串成流水线）</h2>
+<pre><code>你在 Easel 说"帮我写条小红书笔记"
+ → [① Harness] gateway 收到，拼 system prompt，调 LLM        （A3 的循环启动）
+     system = [②] SOUL 人格 + AGENTS 规则 + CONTEXT 路径      （A5 的稳定前缀）
+ → [③] LLM 按 frontmatter 路由到技能 xhs-note-creator，       （A2 的路由）
+     读该技能 SKILL.md（此刻才进上下文）                       （A5 的渐进披露）
+ → [④] SKILL.md 让 LLM 写文案；字数校验、图片规格全调脚本      （L5 的"模型数不清字数"）
+ → 产物写 outputs/&lt;主题&gt;/，[⑤] 本轮只绑当前画像的 memory.md   （A6 的作用域）
+ → [⑥] 发布前 content_guard 扫描，默认 dry-run 等确认          （A12 阶梯 3/4 级）</code></pre>
+<p>六件套不是理论分类——是这条链上真实存在的六个站点。你已经在概念上走过一遍，
+接下来整个正课就是<strong>在真实代码里再走一遍</strong>。</p>
+
+<h2>四、读 agent 仓库的六问（可迁移技能，正式版）</h2>
+<p>拿到任何 agent 项目按序六问，30 分钟定位构造：
+<strong>①</strong> 循环在哪？找 harness 入口，看它监听什么、调哪个模型 API。<br>
+<strong>②</strong> 系统提示词由什么组成？找 SOUL/AGENTS 类文件，数常驻 token。<br>
+<strong>③</strong> 能力怎么声明与路由？函数工具、MCP、还是技能目录？路由发生在模型侧还是代码侧？<br>
+<strong>④</strong> 哪些事固化在脚本、哪些留给模型？<strong>可靠性的分水岭</strong>。<br>
+<strong>⑤</strong> 状态和记忆存哪、作用域多大？全局记忆是红旗。<br>
+<strong>⑥</strong> 边界在哪？有没有闸门、确认、对账——<strong>没有边界的 agent 不可交付</strong>。</p>
+
+<h2>五、关键构造决策表（换你建时的默认答案）</h2>
+<table>
+  <tr><th>决策点</th><th>Easel 的选择</th><th>默认理由</th></tr>
+  <tr><td>自研 harness vs 复用</td><td>复用 OpenClaw</td><td>A17 的四问：差异化在 loop 之上</td></tr>
+  <tr><td>工具 vs 技能目录</td><td>技能目录</td><td>A2 的 token 算术：索引常驻正文按需</td></tr>
+  <tr><td>常驻提示词策略</td><td>极简单真相源，能力全下沉</td><td>A5 的账单 + L4 的位置效应</td></tr>
+  <tr><td>记忆作用域</td><td>按画像分域，禁全局</td><td>A6 的串味推演</td></tr>
+  <tr><td>副作用策略</td><td>默认 dry-run + 闸门 + 对账</td><td>A12 阶梯 + A13 红线</td></tr>
+</table>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验（M1 入门）</h2>
+<p>合上本页，手画六件套 + 每件一个 Easel 实现 + 一条消息走完六站的完整流水线图。
+画完讲给我听——通过即正式进入 L01 给仓库画地图。</p>
+
+<footer class="nav">
+  <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0005-l01-repo-map.html">L01 给仓库画地图</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 六件套里「LLM-脚本分工」要解决的前置课概念是？",
+  opts: ["软失败与精确计数代码化", "流式输出的断线重放", "多智能体的任务派发"],
+  answer: 0,
+  why: "模型会软失败、数不清字数（L5/L2）——确定性 IO 必须给脚本。"
+});
+Quiz.render("q2", {
+  q: "2. 读仓库六问的第六问为什么最重要？",
+  opts: ["没有边界的 agent 不可交付", "安全问题最容易修", "闸门代码通常最有趣"],
+  answer: 0,
+  why: "前三问看能力，后三问看可靠——第六问决定它能不能交付给真实用户。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

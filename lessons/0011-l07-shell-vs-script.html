@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L07 · 薄壳与厚脚本：对照解剖两个技能</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M3 能力层 · L07</div>
+  <h1>对照解剖：纯 prompt 技能 vs 薄壳发布技能</h1>
+  <p class="src">45 min · 精读 social-content/ 与 skill-xhs-publisher/ 两个目录的全部文件清单</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L06」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>分工判据一句话——<strong>碰环境的归脚本，做决策的归模型</strong>。
+  两个技能是这个光谱的两端，中间的一切技能都是混合体。
+</div>
+
+<h2>一、基础：为什么会有这条分工线（从 LLM 的短板推出来）</h2>
+<p>前置课给你攒齐了推理链：模型<strong>只会生成文本</strong>（L1），不能碰文件系统、浏览器、网络；
+模型<strong>会软失败</strong>（L5/A13）——自信地数错字数、编造参数；模型<strong>不稳定</strong>（L3）——
+同一输入两次输出不同。而脚本正相反：确定性、可测试、失败会抛异常。<strong>分工线就是短板互补线</strong>：
+凡是"每次执行必须一模一样"的事（读文件、校验字数、点发布按钮），交给脚本；
+凡是"需要理解与创造"的事（写什么文案、选什么角度），交给模型。
+这条线画错的效果：让模型裸点浏览器按钮 = 每次点法不同 + 假成功分不清；
+让脚本写文案 = 得到模板垃圾。</p>
+
+<h2>二、光谱两端：两个真实技能的解剖</h2>
+<table>
+  <tr><th></th><th>social-content（纯 prompt）</th><th>skill-xhs-publisher（薄壳）</th></tr>
+  <tr><td>目录内容</td><td>SKILL.md + 3 个 references，<strong>无脚本</strong></td><td>SKILL.md + references/commands.md，<strong>自身无脚本</strong></td></tr>
+  <tr><td>真正实现</td><td>LLM 按流程写文案</td><td class="mono">skills/shared/scripts/xhs_publish.py（47KB）</td></tr>
+  <tr><td>为什么无脚本</td><td>它不需要碰环境——产出就是文本</td><td>脚本在共享层（见下节）</td></tr>
+  <tr><td>复用他人资产</td><td>引用 <code>../text-polisher/references/zh-ai-markers.md</code>（跨技能引用知识）</td><td>SELECTORS 每条标注参考源（移植自 xiaohongshu-mcp）</td></tr>
+</table>
+<p>注意<strong>两个技能目录里都没有自己的实现脚本</strong>——但原因相反：前者因为不需要，
+后者因为脚本在 shared。这揭示了目录结构的一个深层原则：<strong>SKILL.md 是"给模型的说明书"，
+实现可以在任何地方</strong>——说明书与实现分离，两层独立演进。</p>
+
+<h2>三、为什么发布脚本放 shared/ 而不是技能目录</h2>
+<p>xhs_publish.py 的调用方有<strong>两个</strong>：agent（按 SKILL.md 指引调用）和
+Web 后端（POST /api/publish/xhs 端点直接 Popen 它，正课 L09 的端点地图会看到）。
+如果脚本放技能目录里：① Web 后端要硬编码一个藏在技能目录深处的路径；② 改一处 bug 要记得
+另一个调用方也受影响；③ 复用给下一个平台技能要跨目录引用。<strong>共享层 = 多调用方的单点实现</strong>
+——48 个共享脚本（约 2.3 万行）就是整个执行层的"标准库"。判据：一个脚本被两个以上入口用，
+就升入 shared。</p>
+
+<h2>四、薄壳技能的执行链（背下来）</h2>
+<pre><code>check（环境自检）→ login（扫码）→ plan（dry-run 预检，给用户确认）
+  → 人设检查（persona_gate）→ publish --exec（真发）
+  → 成功校验（URL 离开 /publish/publish）→ 留痕（record + publish-log）</code></pre>
+<p>注意 dry-run 与 --exec 的位置：<strong>默认演练，显式授权才真发</strong>——M5 会逐行展开这个设计
+（L13 三段式、L14 证据链）。SKILL.md 的工作就是把这条链写清楚，让模型<strong>照着链执行</strong>，
+每步调哪个脚本、什么参数、失败了怎么办。</p>
+
+<h2>五、判据应用（动手环节）</h2>
+<p>给三个新能力划边界（壳里写什么、脚本里放什么）：
+① 批量给 100 张图去背景；② 写一份竞品分析报告；③ 定时发布到快手。
+划完讲给我听，我用 Easel 的真实实现对照批改。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：把决策写死在脚本里。</strong>脚本里硬编码"文案必须 500 字"——那是策略，
+归 SKILL.md/模型；脚本只管<strong>校验</strong>字数。<strong>坑 2：把 IO 写进 prompt 流程。</strong>
+SKILL.md 写"用 python 读一下 outputs 目录看看有什么"——IO 该封装成脚本子命令。
+<strong>坑 3：单调用方脚本也塞 shared。</strong>反向错误——shared 是共享层的"标准库"，
+单调用方的私有脚本留在技能自己的 scripts/。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>说清"为什么 xhs_publish.py 不放在技能目录里而放 shared"——提示：答案和 Web 后端有关（L09/L12 展开）。</p>
+<p><strong>一手源：</strong>两个技能目录的文件树 + skill-xhs-publisher/references/commands.md（命令样例下沉的范例）。</p>
+
+<footer class="nav">
+  <a href="0010-l06-skill-spec.html">← L06</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0012-l08-skill-sync.html">L08 技能同步与调用链</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 「碰环境的归脚本，做决策的归模型」，去背景属于哪边？",
+  opts: ["碰环境的确定性操作", "需要创意的决策性任务", "两者都涉及的混合任务"],
+  answer: 0,
+  why: "rembg 处理图像是确定性 IO；需要模型决策的只是'哪批图、什么规格'。"
+});
+Quiz.render("q2", {
+  q: "2. 发布脚本放 shared/ 而不是技能目录，主要因为？",
+  opts: ["Web 后端与 agent 共用", "技能目录有大小限制", "脚本不想被技能引用"],
+  answer: 0,
+  why: "Web 发布端点和 agent 发布技能调用同一份 xhs_publish.py，单点修复两边受益。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

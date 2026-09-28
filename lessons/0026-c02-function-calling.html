@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L7 · Function Calling：模型怎么"调用"函数</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第一部分 LLM · L7</div>
+  <h1>Function Calling：模型其实从不执行任何函数</h1>
+  <p class="src">20 min · agent 技术栈里被误解最深的一环，逐字段走一遍完整往返</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L6」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>模型只做一件事——<strong>输出一段结构化 JSON 声明"我想调什么、参数是什么"</strong>。
+  执行永远发生在你的代码里。所谓 function calling 是"模型出主意、harness 动手"的协议。
+</div>
+
+<h2>一、完整往返逐段走读（本课主菜）</h2>
+<p><strong>第 ① 步：你随请求发送工具定义。</strong>这段 schema 会进上下文（占 token！），
+也是模型"知道有哪些工具"的唯一途径：</p>
+<pre><code>tools = [{
+  "type": "function",
+  "function": {
+    "name": "read_file",                      # 调用名，模型输出时引用它
+    "description": "读取本地文本文件内容。只支持 utf-8 文本，不支持二进制。",
+                                              # ↑ 模型路由的唯一依据，何时用/何时不用都要写
+    "parameters": {                           # JSON Schema：约束模型生成的参数
+      "type": "object",
+      "properties": {
+        "path": {"type": "string", "description": "相对路径，如 notes.md"}
+      },
+      "required": ["path"]
+    }
+  }
+}]</code></pre>
+<p><strong>第 ② 步：模型不调用任何东西</strong>，只是回答里多了一段结构化声明：</p>
+<pre><code>message.tool_calls = [{
+  "id": "call_abc123",                        # 这次调用的凭证，结果要凭它回填
+  "function": {
+    "name": "read_file",
+    "arguments": "{\"path\": \"notes.md\"}"   # 注意：arguments 是字符串化的 JSON
+  }                                            # ← 是模型生成的，可能有错！
+}]</code></pre>
+<p><strong>第 ③ 步：你的代码真的去读文件</strong>，结果作为 tool 消息回填。关键细节：
+assistant 的 tool_calls 消息<strong>本身也要先 append 进历史</strong>，否则协议不完整：</p>
+<pre><code>messages.append(message)                     # ② 的声明先入历史
+content = open("notes.md").read()[:4000]     # 截断！工具结果太大是窗口杀手
+messages.append({
+  "role": "tool",
+  "tool_call_id": "call_abc123",             # 凭 id 对应——模型靠它知道结果属于哪次调用
+  "content": content,                        # 失败时：content = '{"error": "FileNotFoundError"}'
+})                                           # ↑ 失败也是结果，同样回填（A3 铁律①）</code></pre>
+<p><strong>第 ④ 步：带着完整历史再调模型</strong>→ 它基于结果继续：可能给最终回答（停止），
+可能再要工具（下一轮循环）。<strong>这个往返放进循环，就是 agent（A1）。</strong></p>
+
+<h2>二、三个实践要点（每个都对应一类真实事故）</h2>
+<p><strong>① 工具定义占上下文，而且每轮都占。</strong>10 个工具 ≈ 1000–3000 token，
+<strong>不管用不用都在窗口里</strong>。工具一多，就必须按需加载（MCP 的 tool-search、
+Easel 的 skill frontmatter 路由都是为此，A2 展开）。</p>
+<p><strong>② arguments 是模型生成的 = 可能错。</strong>路径不存在、类型不对、编造参数都常见。
+harness 必须 validate 后再执行（OpenClaw 源码里有专门的 validateToolArguments），
+校验失败把错误<strong>回填给模型</strong>重试——不是抛给用户。</p>
+<p><strong>③ description 是给模型看的 UI。</strong>它决定模型"何时选这个工具"。
+写清三件事：做什么、何时用、何时<em>不</em>用（负空间同样是路由信息）。
+Easel 技能规范要求 description 写"与相邻技能的边界"，就是把这个道理制度化（正课 L06）。</p>
+
+<h2>三、常见踩坑</h2>
+<p><strong>坑 1：忘 append assistant 消息。</strong>只回填 tool 结果不回填 tool_calls 声明，
+多数 API 直接 400（找不到 tool_call_id 的归属）。</p>
+<p><strong>坑 2：并行调用当串行处理。</strong>模型一次可能返回多个 tool_calls（比如同时读两个文件），
+它们之间<strong>没有顺序保证</strong>，应并行执行、按 id 各自回填。</p>
+<p><strong>坑 3：工具结果不截断。</strong>读了个 50KB 的日志原文直接回填——两三轮窗口就爆了。
+结果要截断/摘要/存盘后给指针（A5 蒸馏原则）。</p>
+
+<h2>四、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>五、出口检验</h2>
+<p>模型输出 tool_calls 后，如果 harness 直接抛异常而不是回填错误结果，从"模型下一轮看到什么"推演：
+会发生什么？为什么说这等于放弃了 agent 的核心能力？发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0042-l06-prompting.html">← L6</a> · 第一部分完 · 转入第二部分：
+  <a href="0027-c03-what-is-agent.html">A1 Agent 是什么</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 模型在 function calling 中实际执行了什么？",
+  opts: ["什么都不执行只声明", "直接执行函数本体", "由服务商代为执行"],
+  answer: 0,
+  why: "模型只输出'想调什么+参数'的 JSON；执行永远在 harness 的代码里。"
+});
+Quiz.render("q2", {
+  q: "2. 工具执行失败时正确的处理是？",
+  opts: ["错误结果回填给模型", "异常直接抛给用户", "静默重试直到成功"],
+  answer: 0,
+  why: "模型看到失败原因才能自我纠正；抛给用户等于放弃了 agent 的核心能力。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

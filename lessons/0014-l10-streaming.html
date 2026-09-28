@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L10 · 对话流式链路</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M4 驱动层 · L10</div>
+  <h1>对话流式链路：一个 token 的旅途与断线不死</h1>
+  <p class="src">45 min · 精读 web/app.py:2051-2470（/api/chat/stream 全流程）</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L09」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>两个设计撑起整条链路——<strong>supervisor/forward 分离</strong>（浏览器断开只断转发，
+  agent 照跑到底）和 <strong>runId 闩锁</strong>（多会话共享一个流文件时认领自己的行）。
+</div>
+
+<h2>一、基础：为什么流式这么绕（问题的根源）</h2>
+<p>理想很直接：模型吐一个 token，页面显示一个 token。绕在哪？<strong>架构上隔着三层</strong>：
+模型在 gateway 进程里跑，浏览器在 Web 后端之外，中间隔着"怎么把字节流从 A 搬到 B"。
+更糟的是 Easel 发现的坑（:2055 docstring 原文大意）：<code>openclaw agent</code> CLI 的 stdout
+<strong>没有增量</strong>——它把整段模型输出缓冲到结束才打印。也就是说：走 CLI 路径，
+你只能等全部结束才拿到一个完整答案，"流式"物理上不存在。</p>
+<p>gateway 侧有解法：设 <code>OPENCLAW_RAW_STREAM=1</code> 环境变量后，gateway 把模型原始流
+<strong>逐 token 追加写入一个 JSONL 文件</strong>。于是 Easel 的流式方案变成：
+<strong>gateway 写文件 → Web 后端 tail 文件 → 转 SSE（Server-Sent Events：浏览器原生的事件推送通道，服务端可单向持续推送）推浏览器</strong>。
+用文件当进程间的流管道——看起来土，实则稳：进程崩溃文件还在（可重放）、
+多读者天然支持、零新依赖。</p>
+
+<h2>二、一个 token 的完整旅途</h2>
+<pre><code>gateway 进程（跑 agent loop）
+  │ OPENCLAW_RAW_STREAM=1 时逐事件追加
+  ▼
+/tmp/easel-raw-stream.jsonl（单文件，所有会话共享！）
+  │ 后端本轮开始记文件尾偏移 → _tail 线程读新增行
+  │ 首个新事件的 runId 闩锁本轮（:2361-2371），别会话的行被忽略
+  ▼
+SSE token / thinking / activity 事件 ──▶ 浏览器
+  │ 同时每事件落盘 outputs/_sessions/<turn>.jsonl
+  ▼
+断线重连：GET /api/chat/jobs/{turn_id}/stream 重放 / /api/chat/last 取回最终结果</code></pre>
+<p>两个设计点展开。<strong>① 共享文件的隔离问题</strong>：所有会话的流写进同一个文件，
+Web 后端怎么只取自己这轮的？本轮开始时记下文件当前<strong>末尾偏移</strong>（从这之后的新行才是本轮的），
+再对每行检查 <code>runId</code>——首个带新 runId 的事件闩锁本轮，之后只放行同一 run 的行。
+闩锁（latch）是并发编程的常用原语：一旦确定归属就锁死，防后续串台。<strong>② 双写</strong>：
+事件进 SSE 的同时落盘到 <code>outputs/_sessions/</code>——这就是断线重放的数据源
+（A14 的"产物落盘"思想用于流事件）。</p>
+
+<h2>三、supervisor/forward 分离（:2064-2066 注释原文）</h2>
+<blockquote class="note">「run 跑在独立后台任务里，客户端断开只结束 forward，不取消 supervisor →
+openclaw 照常跑到底、结果落盘，前端断线后 /api/chat/last 取回。」</blockquote>
+<p>拆开讲：处理一轮对话涉及两个异步角色——<strong>supervisor</strong>（跑 openclaw 进程、等结果、
+落盘）和 <strong>forward</strong>（把事件从队列推给浏览器 SSE）。关键决策：<strong>两者生命周期解耦</strong>——
+浏览器断开（用户刷新页面）只杀 forward，supervisor 和 openclaw 照跑。
+为什么必须这样：一条视频制作 turn 可能 20 分钟，刷新页面不该杀掉进行中的工作
+（A15 信任：用户的委托不能因为页面刷新而蒸发）。代价：必须配合事件落盘 + 重放端点，
+否则断线后永远拿不到结果。</p>
+
+<h2>四、传输层钉子：一次会话不换边</h2>
+<p>HTTP 直连（无冷启动，实测 4.1-4.5s/轮）与 CLI spawn（7.1-7.6s/轮）两条路都通 gateway
+（:78-79 注释有实测数），但<strong>同一会话绝不中途换</strong>——
+<code>outputs/_sessions/&lt;sk&gt;.transport</code> 钉子文件钉死选择。
+换了会怎样？两条路径写不同的 transcript（HTTP 端点不读 x-openclaw-session-id 头，:1829），
+换边 = 历史劈叉，静默丢失。<strong>回退（A13）必须考虑状态一致性</strong>的实锤案例：
+可用性优化不能破坏数据完整性。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：tail 从文件头开始。</strong>必须先记偏移再 tail——从头读会把别的会话的历史行当成自己的。
+<strong>坑 2：断线即取消任务。</strong>supervisor/forward 不分离的产品，用户刷新一次 = 20 分钟白跑。
+<strong>坑 3：共享流文件不做归属校验。</strong>多会话串台的典型来源。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>画出自己版本的流式链路图，标注：token 从哪产生、经过哪个共享文件、runId 在哪一步闩锁、
+断线后走哪两个端点恢复。讲给我听。</p>
+<p><strong>一手源：</strong>web/app.py:2051-2160（函数 docstring 本身就是一篇设计文档）。</p>
+
+<footer class="nav">
+  <a href="0013-l09-web-overview.html">← L09</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0015-l11-session-engineering.html">L11 会话工程</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 浏览器断开后，正在跑的 agent 会怎样？",
+  opts: ["照常跑完并落盘结果", "立刻被终止停止工作", "暂停等浏览器重连"],
+  answer: 0,
+  why: "断开只结束 forward 通道；supervisor 与 openclaw 进程照跑，结果可事后取回。"
+});
+Quiz.render("q2", {
+  q: "2. 多会话共享一个 raw-stream 文件靠什么隔离？",
+  opts: ["每行 runId 闩锁认领", "每个会话一个文件", "按时间戳精确切分"],
+  answer: 0,
+  why: "首个新事件的 runId 闩锁本轮，之后只放行同一 run 的行；单文件 + 行级归属最简单。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A7 · 结构化输出</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A7</div>
+  <h1>结构化输出：让模型的输出能被程序消费</h1>
+  <p class="src">20 min · 五级可靠性阶梯逐级走读，最后给一段可直接抄的校验重试代码</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A6 记忆」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>agent 的下游是程序，程序的输入必须结构化。可靠性阶梯五级：
+  prompt 恳求 → few-shot → JSON mode → 工具 schema 约束 →
+  <strong>生成后校验 + 失败重试</strong>。生产级 agent 永远站在第五级。
+</div>
+
+<h2>一、五级阶梯逐级走读（每级看真实失败）</h2>
+<p><strong>级 1：prompt 恳求。</strong>"请以 JSON 格式输出"。典型失败——模型贴心地包了一层：
+<code>好的！以下是 JSON：```json {...} ```</code>。寒暄、代码围栏、尾逗号、单引号，全都会来。</p>
+<p><strong>级 2：few-shot。</strong>给一两个示例。格式漂移收敛大半，但换个模型/换个任务就得重调，
+且字段多余/缺失仍不可控。</p>
+<p><strong>级 3：JSON mode / 受限解码。</strong>API 层保证输出能 parse。<strong>重要边界：
+语法合法 ≠ 字段齐全</strong>——缺 required 字段、枚举拼错，它不管。</p>
+<p><strong>级 4：工具 schema 约束。</strong>用 function calling 的 parameters schema 承载输出
+（"调用 submit_result 工具"），结构由 provider 约束解码保证。这是多数场景的最优解——
+你已经有工具基础设施了，复用它。</p>
+<p><strong>级 5：校验 + 重试。</strong>不管前面几级，<strong>永远</strong>生成后校验、失败回喂。
+这是从"应该对"到"必然对"的最后一道闸。</p>
+
+<h2>二、第五级的参考实现（可直接抄）</h2>
+<pre><code>from pydantic import BaseModel, ValidationError   # pydantic：Python 最常用的数据校验库，用类型声明自动校验 JSON
+
+class Verdict(BaseModel):
+    overall: str          # pass | warn | fail
+    issues: list[str]
+    top_fix: str
+
+def ask_structured(messages, tries=3):
+    for i in range(tries):
+        raw = call_llm(messages)                    # 任意级别的前四级手段
+        try:
+            return Verdict.model_validate_json(raw)
+        except ValidationError as e:
+            messages += [                            # 失败回喂，不是崩给用户
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content":
+                 f"输出不符合 schema：{e}。请严格按 schema 重输，"
+                 f"overall 只能取 pass/warn/fail。"}]
+    raise RuntimeError("结构化输出连续失败")          # 三次都坏才上抛——此时是真异常</code></pre>
+<p>注意这段代码和 A3 铁律①的同构性：<strong>校验失败是消息，不是异常</strong>——
+错误信息回喂让模型自我修复，重试上限才是失控保险丝。</p>
+
+<h2>三、枚举与契约：把自由度降到最低</h2>
+<p>模型输出的每个自由文本字段都是下游的定时炸弹。两个 Easel 实例：
+① <code>skill-quality-gate</code> 的输出契约把结论定为<strong>三级枚举</strong>（overall_verdict）
+加 issues 列表加 top_fixes——下游按 schema 解析，永不猜"模型到底什么意思"；
+② <code>platform_readback</code> 的四档结论（verified/unverified/login_required/readback_error）
+本质是用<strong>枚举类型约束判断表达</strong>。设计原则：
+<strong>能枚举的不要字符串，能数字的不要描述，字段能少一个就少一个</strong>。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：要求 JSON 但不校验。</strong>级 1-4 都上了，就是不 validate——
+"大多数时候能 parse"在生产里等于"凌晨三点炸一次"。</p>
+<p><strong>坑 2：错误信息回喂得太抽象。</strong>"格式错误请重试"不如
+"缺 issues 字段、overall 取了'通过'（只允许 pass/warn/fail）"——纠错信息越具体，重试越快成功。</p>
+<p><strong>坑 3：重试不设上限。</strong>和 loop 一样，重试也要保险丝（示例里的 tries=3）。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验</h2>
+<p>为"竞品分析技能"设计输出 schema（≥4 个字段、至少 1 个枚举、说明每个字段为什么值得结构化），
+并写出第五级的校验重试伪代码（3 行即可）。发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0029-c05-memory.html">← A6 记忆</a> · 下一课：<a href="0034-c10-rag.html">A8 RAG 与检索</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. JSON mode 解决了什么、没解决什么？",
+  opts: ["语法合法但字段不保证", "字段齐全但语法会出错", "两者都已经完全解决"],
+  answer: 0,
+  why: "受限解码保证能 parse；缺字段/错类型/枚举拼错仍需 schema 校验兜底。"
+});
+Quiz.render("q2", {
+  q: "2. 校验发现模型输出缺字段，正确动作是？",
+  opts: ["错误回喂让它重试", "直接抛异常给用户", "默默用默认值填充"],
+  answer: 0,
+  why: "与工具失败同理：具体错误信息回填，模型自我修复——生产级的最后一级阶梯。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

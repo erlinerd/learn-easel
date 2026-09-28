@@ -1,0 +1,116 @@
+/* Easel 架构课程 · 共享样式 —— Tufte 风格，可打印 */
+:root {
+  --accent: #F05A3C;        /* Easel 品牌橙 */
+  --ink: #1a1a1a;
+  --paper: #fffdf9;
+  --muted: #6b6b6b;
+  --rule: #e5ded4;
+  --code-bg: #f4f0e9;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: "Charter", "Georgia", "Songti SC", "Noto Serif CJK SC", serif;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 5rem;
+  line-height: 1.75;
+  font-size: 1.06rem;
+}
+
+header.course {
+  border-bottom: 3px double var(--rule);
+  padding-bottom: 0.8rem;
+  margin-bottom: 2.2rem;
+}
+header.course .kicker {
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+h1 { font-size: 1.9rem; line-height: 1.25; margin: 0.4rem 0 0.3rem; }
+h2 {
+  font-size: 1.25rem;
+  margin: 2.6rem 0 0.8rem;
+  padding-left: 0.6rem;
+  border-left: 4px solid var(--accent);
+}
+p { margin: 0.7rem 0; }
+
+code, .mono {
+  font-family: "SF Mono", ui-monospace, "JetBrains Mono", monospace;
+  font-size: 0.86em;
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+pre code { background: none; padding: 0; }
+
+table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: 0.92rem; }
+th, td { border: 1px solid var(--rule); padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+th { background: #f7f2ea; font-size: 0.85rem; }
+
+.verdict {
+  border: 1.5px solid var(--accent);
+  border-radius: 10px;
+  padding: 1rem 1.3rem;
+  margin: 1.4rem 0;
+  background: #fff6f2;
+}
+.verdict strong { color: var(--accent); }
+
+aside.note {
+  font-size: 0.88rem;
+  color: var(--muted);
+  border-left: 2px solid var(--rule);
+  padding-left: 0.9rem;
+  margin: 1rem 0;
+}
+
+.src { font-size: 0.8rem; color: var(--muted); font-family: "SF Mono", ui-monospace, monospace; }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+footer.nav {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 3px double var(--rule);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* 测验组件 */
+.quiz { margin: 1.6rem 0; padding: 1.1rem 1.3rem; border: 1px solid var(--rule); border-radius: 10px; background: #fff; }
+.quiz .q { font-weight: 600; margin-bottom: 0.7rem; }
+.quiz .opt {
+  display: block; width: 100%; text-align: left;
+  font: inherit; font-size: 0.95rem;
+  padding: 0.5rem 0.8rem; margin: 0.35rem 0;
+  border: 1px solid var(--rule); border-radius: 8px;
+  background: var(--paper); cursor: pointer;
+}
+.quiz .opt:hover { border-color: var(--accent); }
+.quiz .opt.correct { border-color: #2e7d32; background: #f0f7f0; }
+.quiz .opt.wrong { border-color: #c62828; background: #fdf1f0; }
+.quiz .why { font-size: 0.85rem; color: var(--muted); margin-top: 0.6rem; min-height: 1.2rem; }
+.quiz .opt:disabled { cursor: default; }
+
+@media print {
+  body { max-width: none; padding: 0; font-size: 10.5pt; }
+  .quiz { page-break-inside: avoid; }
+  a { color: var(--ink); }
+}

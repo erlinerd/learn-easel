@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L6 · 提示词工程</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第一部分 LLM · L6</div>
+  <h1>提示词工程：像调试，不像写作</h1>
+  <p class="src">20 min · 第一部分收官课——把 L1–L5 的机理翻译成可复用的写法纪律与迭代流程</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L5」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>提示词工程的 80% 不是技巧，是<strong>把 L1–L5 的机理翻译成写法</strong>：
+  结构化表达、正向指令、示例覆盖边界、明确的输出契约、一次改一处的迭代纪律。
+  好提示词是调出来的，不是写出来的。
+</div>
+
+<h2>一、五条核心写法（每条对应一个机理）</h2>
+<table>
+  <tr><th>写法</th><th>对应机理</th><th>示例</th></tr>
+  <tr><td><strong>结构化分隔</strong></td><td>位置效应与显著性（L4）</td><td>用 XML/Markdown 标签把"规则/数据/任务"分区：&lt;规则&gt;…&lt;/规则&gt;&lt;数据&gt;…&lt;/数据&gt;</td></tr>
+  <tr><td><strong>正向指令</strong></td><td>"不要想大象"效应</td><td>✗"不要用书面语" → ✓"用口语，像跟朋友聊天"</td></tr>
+  <tr><td><strong>输出契约前置</strong></td><td>输出也占预算（L2）+ 结构化（A7）</td><td>"以 JSON 输出，字段：title(≤20字)、tags(3个)"放在任务描述前</td></tr>
+  <tr><td><strong>示例覆盖边界</strong></td><td>ICL 即分布（L5）</td><td>示例里放一个"输入缺失→输出 null"的边界例</td></tr>
+  <tr><td><strong>允许不知道</strong></td><td>幻觉机理（L5）</td><td>"无法从给定资料确认时，写 uncertain，不要推断"</td></tr>
+</table>
+<p>为什么"正向指令"有效？模型对文本的加工是<strong>激活</strong>式的：读到"书面语"这个词，
+相关的模式就被激活了，前面的"不要"压不住。告诉它<strong>要什么</strong>，激活的就是目标模式。</p>
+
+<h2>二、三个进阶手段（按需取用）</h2>
+<p><strong>① 角色设定，用在刀刃上。</strong>"你是资深儿科医生"能激活专业语域和审慎度——
+但它不是万能的：对事实准确性提升有限（L5 幻觉是机制问题），对<strong>语气/审慎度/视角</strong>有效。
+判据：需要的是"专业风范"就用，需要的是"更多知识"就别用（去检索，A8）。</p>
+<p><strong>② 输出前置（prefill）。</strong>让 assistant 消息以 <code>{"</code> 开头——模型被迫
+直接续写 JSON，寒暄和代码围栏物理性消失。这是对付"级 1 格式漂移"最便宜的偏方
+（API 支持 assistant 预填时）。</p>
+<p><strong>③ 自一致性（self-consistency）。</strong>同一问题采样 5 次（温度略高），对结果<strong>投票</strong>取多数——
+用采样次数换正确率，多步推理题能提 5–10 个点。代价是 5 倍 token，只在答错代价高的场景用。
+这本质是 A9 的"多智能体并行"退化到单请求内的版本。</p>
+
+<h2>三、few-shot 示例的选择学（L5 的工程化）</h2>
+<p>示例即分布——模型模仿你给的一切。三条选择纪律：<strong>① 覆盖边界</strong>：
+最短合法输出、缺失字段的处理、极端输入各来一个，比三个"完美案例"有效；
+<strong>② 数量 2–5 个</strong>：超过后边际收益趋零而 token 线性涨；<strong>③ 顺序有影响</strong>：
+模型对<strong>最后一个示例</strong>最强（近因），把最典型/最关键的放最后。</p>
+
+<h2>四、迭代纪律：提示词是实验，不是文章</h2>
+<pre><code>1. 先写测试集：3-5 个典型输入 + 1-2 个边界输入（写之前就想好"好的输出长什么样"）
+2. 基线跑一遍，记录结果（A11 的微缩版）
+3. 每次只改一处 → 全量重跑 → 对比 → 保留或回滚（版本化，像 git 一样）
+4. 稳定优于最优：一个 92 分但不稳、一个 90 分但稳——选后者</code></pre>
+<p>为什么强调"一次只改一处"：提示词是高维敏感系统，同时改两处，
+效果提升时你<strong>不知道是哪处起了作用</strong>，下次没法复制。
+示例文件管理建议：提示词和测试集都进 git，每次实验记一行（改了什么、得分多少）——
+一个月后你会感谢这份账本。</p>
+
+<h2>五、system 与 user 的分工（L4 落地）</h2>
+<p><strong>system</strong>：每一轮都成立的规则、角色、契约——稳定、靠前（缓存 + 显著性）。
+<strong>user</strong>：本次的具体输入与数据。判断一道题："这条规则 10 轮后还要生效吗？"
+要 → system（并考虑末尾重申，L4 位置效应）；只在本次任务相关 → user。
+<strong>敏感信息两边都不放</strong>（A12：prompt 不是保险箱）。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：万能 prompt 迷信。</strong>收集"神级 prompt"直接套——机理不匹配场景，
+神级也是零级。用本课表格自己推导。<br>
+<strong>坑 2：一次改五个地方。</strong>效果好了不知道归功谁，坏了不知道回滚哪——实验纪律高于文笔。<br>
+<strong>坑 3：把提示词当安全措施。</strong>"不要泄露 system 提示"挡不住注入——
+安全靠 A12 的代码层阶梯，提示词只承担"降低概率"。<br>
+<strong>坑 4：CoT 和推理模型叠加。</strong>推理模型已内化思考，再喊"一步步想"是白烧 token（L5）。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>把这段烂提示词改好（至少指出 4 处问题并给出改法）：<br>
+<code>"你是个资深编辑。不要写得太长，帮我把下面的内容改得吸引人一点，小红书风格。"</code><br>
+改完发到对话里，我按五条写法逐条批改——通过即第一部分 LLM 基础收官，
+进入 <a href="0026-c02-function-calling.html">L7 Function Calling</a>（通往 agent 的桥）。</p>
+
+<footer class="nav">
+  <a href="0041-l05-capabilities.html">← L5</a> · 下一课：<a href="0026-c02-function-calling.html">L7 Function Calling 协议</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 提示词迭代最重要的纪律是？",
+  opts: ["一次只改一处", "尽量一次改到位", "多听模型的建议"],
+  answer: 0,
+  why: "高维敏感系统里同时改多处，效果无法归因——归因才能复制和回滚。"
+});
+Quiz.render("q2", {
+  q: "2. 「不要用书面语」这种写法的问题在？",
+  opts: ["负向指令反向激活", "字数太短信息太少", "应该放在 user 消息里"],
+  answer: 0,
+  why: "'不要想大象'效应：否定词激活的恰是要避开的内容——改写成正向表述。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

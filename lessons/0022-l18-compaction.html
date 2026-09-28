@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L18 · compaction 与持久化</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M6 内核层 · L18 · M6 毕业课</div>
+  <h1>compaction 与持久化：历史为什么只追加不重写</h1>
+  <p class="src">45 min · agent-session-compaction.ts:490 + compaction.ts:196-199 + session-manager-entries.ts:515-530</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L17」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>上下文快满时的处理不是"删掉旧消息"，而是
+  <strong>LLM 生成摘要 → 作为一条 compaction entry 追加进 transcript → continue() 续跑</strong>。
+  历史永不重写：可回放、可审计、prompt cache 前缀稳定，三重收益。
+  这是 A6/铁律②在内核层的完整实现。
+</div>
+
+<h2>一、两个触发条件（谁先到谁触发）</h2>
+<table>
+  <tr><th>Case</th><th>触发</th><th>行为</th><th>为什么这么设计</th></tr>
+  <tr><td><strong>溢出恢复</strong></td><td class="mono">stopReason ∈ {error, length} 且 isContextOverflow</td><td>压缩后 willRetry=true 续跑；从重试上下文剔除失败响应；有 MAX_OVERFLOW_COMPACTION_ATTEMPTS 上限</td><td>溢出是事故，压缩是急救——但不能无限急救，否则陷入"压→满→压"死循环</td></tr>
+  <tr><td><strong>阈值维护</strong></td><td class="mono">tokens > contextWindow − 16384</td><td>维护性压缩；保留最近 20000 token 原文</td><td>在真的溢出之前主动维护，代价可控</td></tr>
+</table>
+<p>两个常量值得背：<code>reserveTokens: 16384</code>（给压缩流程本身留的工作空间——
+压缩也要调一次 LLM，也得占窗口）和 <code>keepRecentTokens: 20000</code>
+（最近消息保原文——当前任务通常依赖近期细节，A6 讲过的原则）。
+出处：compaction.ts:198-199，整个模块的灵魂就这三行 DEFAULT_COMPACTION_SETTINGS。</p>
+
+<h2>二、执行序列逐步（时序背下来）</h2>
+<pre><code>run 结束 → handlePostAgentRun → checkCompaction        ① 时机：轮次之间，不打断当前流
+  → compaction_start 事件                             ② 外部可观测
+  → LLM 生成结构化摘要（compaction-runtime）           ③ 摘要本身是一次模型调用
+  → CompactionEntry 追加落盘                           ④ 见下方字段表
+  → context replacement（会计系统收到 tokensAfter）     ⑤ 计费上下文同步
+  → agent.continue()                                   ⑥ 无缝续跑，用户无感</code></pre>
+<p><strong>所以 compaction 不是 stopReason</strong>——它发生在消息之后、run 层自动恢复。
+推论（外部消费者必考）：Easel 判断"这轮结束"必须看 <code>agent_end</code> 生命周期事件，
+不能看单条 message_end——中间可能隔着一次无感的 compaction。</p>
+
+<h2>三、CompactionEntry 的字段（:515-530）</h2>
+<pre><code>const entry: CompactionEntry = {
+  type: "compaction",
+  id: ..., parentId: ...,
+  summary,                 // LLM 生成的摘要
+  firstKeptEntryId,        // ← 原文从哪条开始还"活着"——回放时的分界线
+  tokensBefore, ...        // 计费与审计
+};
+this.appendEntry(entry, {...});    // 注意：append，不是 rewrite</code></pre>
+<p><code>firstKeptEntryId</code> 是精髓：回放历史时，遇到 compaction entry 就跳到它标记的
+存活线——<strong>旧原文还在文件里</strong>（审计可查），只是后续轮不再重发给模型。
+"逻辑截断，物理完整"，一句话记住整个设计。</p>
+
+<h2>四、"只追加"的三重收益展开（M6 毕业）</h2>
+<p><strong>① 可回放可审计。</strong>任何一次历史事故都能重放"当时模型到底看到什么"——
+重写式历史做到这一点要靠备份，追加式天然免费。Easel 的 session_heal（L11）也依赖它：
+修复 = 生成新的清洗记录，不是抹掉过去。<br>
+<strong>② prompt cache 稳定。</strong>重写历史 = 前缀变化 = 缓存全废（A5）。
+追加式下，每轮的前缀严格是上一轮的超集，缓存逐轮累积命中。<br>
+<strong>③ 并发安全。</strong>追加是原子操作（单 writer claim：withOwnedSessionTranscriptWrites
+保证同一时刻只有一个写入者），重写则需要全文锁。</p>
+<p>持久化的物理形态：transcript 是 JSONL（按行 parse），写入经 SQLite worker；
+追加 entry 无论普通消息还是 compaction 都走同一条 appendEntry 通道——
+<strong>统一写入路径</strong>是并发纪律的前提。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：外部消费者把 compaction 当失败。</strong>看到 compaction 事件以为会话出错而终止轮次——
+它是正常维护，压完 continue() 无缝续跑。</p>
+<p><strong>坑 2：自己实现时摘要存丢了边界。</strong>只存 summary 不存 firstKeptEntryId——
+回放时分不清哪些原文还算数，审计能力减半。</p>
+<p><strong>坑 3：把 reserveTokens 设成 0。</strong>压缩调用本身需要窗口工作空间——
+不留余量会陷入"想压但没有空间生成摘要"的死锁。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验（M6 毕业）</h2>
+<p>三分钟讲给我听：① 一次 compaction 的完整时序（六步）；
+② "只追加"的三重收益各举一个反例场景（如果重写了会怎么坏）；
+③ Easel 外部判断轮次结束的正确信号是什么、为什么。
+通过即 M6 毕业，进入 <a href="0023-l19-blueprint.html">L19 毕业蓝图</a>。</p>
+<p><strong>一手源：</strong>compaction.ts 的 DEFAULT_COMPACTION_SETTINGS + session-manager-entries.ts:515-530。</p>
+
+<footer class="nav">
+  <a href="0021-l17-tool-execution.html">← L17</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0023-l19-blueprint.html">L19 毕业蓝图</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. compaction 后历史文件里多了什么？",
+  opts: ["一条压缩摘要条目", "一份重写后的全文", "一个全新的会话文件"],
+  answer: 0,
+  why: "CompactionEntry（含 summary 与 firstKeptEntryId）追加进原 transcript；原文物理保留。"
+});
+Quiz.render("q2", {
+  q: "2. keepRecentTokens=20000 体现的原则是？",
+  opts: ["最近消息保原文", "旧消息更加重要可靠", "摘要永远优于原文"],
+  answer: 0,
+  why: "当前任务依赖近期细节：近保原文、远保摘要，兼顾成本与质量。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

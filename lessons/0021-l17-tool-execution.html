@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L17 · 工具执行与流式事件</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M6 内核层 · L17</div>
+  <h1>工具执行与流式事件：一次 tool call 的完整生命周期</h1>
+  <p class="src">45 min · agent-loop.ts:443-1300 + agent-stream-response.ts:286-357</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L16」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>工具不是黑盒函数调用——从模型输出 tool call 到结果回填，
+  中间经过<strong>验证 → 准入 → 串/并行调度 → 执行 → 结果构造 → 回填</strong>六站；
+  而且在流式模式下，工具在<strong>流还没结束</strong>时就开始执行了。每一站都是可插拔的钩子位。
+</div>
+
+<h2>一、六站旅程（对照 L7 的协议层）</h2>
+<pre><code>① 模型流式输出 toolcall_end 事件
+② validateToolArguments 参数验证 + beforeToolCall 准入（block:true → 合成失败结果）
+③ 串行 or 并行？config.toolExecution 与批次内 hasSequentialToolCall 决定（:498-510）
+④ execute(toolCallId, args, signal) —— 进程内函数；MCP 工具包装成同形态（:1151-1163）
+⑤ 异常 → isError:true 的结果消息（不是抛给用户！:1140-1147）
+⑥ role:"toolResult" 消息 push 回 context.messages（:327 / 流式路径 :185-191）</code></pre>
+<p>L7 讲的是"协议上该怎么往返"，本课看"harness 在每站插了什么"。重点看两段真实代码。</p>
+
+<h2>二、流中提前执行（最反直觉的设计，:321-347 原文节选）</h2>
+<pre><code>if (event.type === "toolcall_end" && event.toolCall.async && ...) {
+  const prefix = prepareAssistantMessage(...slice(committedContentCount,
+                                                    event.contentIndex + 1)...);
+  // Await transcript persistence before admitting side effects. The model
+  // may keep sampling, but every executed call has a durable owner.
+  await commitFragment(prefix);        // ① 先把"前缀消息"持久化进 transcript
+  committedContentCount = event.contentIndex + 1;
+  enqueueTools(prefix);                // ② 然后才把工具放进执行队列
+}</code></pre>
+<p>逐行读：<strong>流还在生成时</strong>，一个完整的 toolcall_end 到了，就立刻——
+① 把"到目前为止的 assistant 消息片段"<strong>先落盘</strong>（注释原文：先持久化再放行副作用——
+模型还在继续采样，但每个被执行的调用都有了"确定的归属"）；② 把工具入队执行。
+收益：<strong>工具耗时与模型生成重叠</strong>，总时延显著下降；
+约束：<strong>副作用必须有先行留痕</strong>——出问题时有据可查。
+这是"性能优化不破坏审计性"的教科书案例。</p>
+
+<h2>三、结果构造与 isError（:1478-1500 原文节选）</h2>
+<pre><code>const message = ... {
+  role: "toolResult",
+  toolCallId: finalized.toolCall.id,     // 凭 id 对应——和 L7 协议一致
+  toolName: finalized.toolCall.name,
+  content: finalized.result.content ?? [],
+  isError: finalized.isError,            // ← 铁律①在类型系统里的位置
+  timestamp: Date.now(),
+};</code></pre>
+<p>注意 <code>isError</code> 是消息的<strong>一等字段</strong>，不是异常堆栈——失败被结构化了，
+模型下一轮能精确读到"哪个调用（toolCallId）的什么错误"。再看 :1140-1147 的另一半：
+执行抛出的真异常会被 catch 并转成同样的 isError 结果。两路失败汇成一个协议。</p>
+
+<h2>四、钩子链：harness 的扩展点（你自己加功能的接口）</h2>
+<table>
+  <tr><th>钩子</th><th>时机</th><th>典型用途</th></tr>
+  <tr><td class="mono">beforeToolCall</td><td>执行前</td><td>审批/付费拦截（block:true → 合成失败结果给模型）</td></tr>
+  <tr><td class="mono">afterToolCall / afterToolOutcome</td><td>执行后</td><td>改写结果、打 taint 标记、脱敏</td></tr>
+  <tr><td class="mono">resolveDeferredTool</td><td>找不到工具时</td><td>tool-search 延迟加载目录（A2 的按需加载落点）</td></tr>
+  <tr><td class="mono">prepareNextTurn</td><td>轮与轮之间</td><td>换模型/换思维档（L16 :373）</td></tr>
+</table>
+<p><strong>好 harness 的标志：加功能不改内核。</strong>OpenClaw 的审批系统与 taint 体系全部挂在
+afterToolCall/afterToolOutcome 上（agent-session-base.ts），agent-loop.ts 一行不用动。
+你给自己的 agent 加"付费工具前弹确认"，就该插 beforeToolCall。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：把流中执行当成"边生成边执行全部"。</strong>只有 <code>async: true</code> 的工具才提前入队；
+同步工具等流结束统一批次执行。设计自己的工具时要标 async。</p>
+<p><strong>坑 2：钩子里做重活。</strong>beforeToolCall 里查数据库做审批——批次被串行卡住。
+钩子要轻，重活放工具本体。</p>
+<p><strong>坑 3：MCP 工具当子进程调用。</strong>它们同样被包装成进程内 execute 函数统一调度——
+分发的抽象层只有一个，别在业务里再分叉。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>画出一次<strong>失败</strong> tool call（脚本 crash）的完整数据流：从模型决定调用，
+到模型在下一轮看到什么——标注 isError 在哪一站被设置、流中执行路径和批次路径分别在哪回填。
+再答：如果要加"付费工具必须先过人工审批"，插哪个钩子、返回什么？
+发到对话里我批改。</p>
+<p><strong>一手源：</strong>agent-loop.ts:443 起 executeToolCalls + :1140-1147 异常转结果段。</p>
+
+<footer class="nav">
+  <a href="0020-l16-loop-reading.html">← L16</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0022-l18-compaction.html">L18 compaction 与持久化</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 工具执行抛异常时 loop 构造什么？",
+  opts: ["isError 为真的结果消息", "抛给用户的运行异常", "静默忽略这一次调用"],
+  answer: 0,
+  why: "失败是给模型看的信息：isError:true 回填，模型下一轮自我纠错。"
+});
+Quiz.render("q2", {
+  q: "2. 流中提前执行工具的前置条件是什么？",
+  opts: ["先持久化 assistant 消息", "先取得用户二次确认", "先关闭流式输出通道"],
+  answer: 0,
+  why: "先 commit transcript 再放副作用——性能优化不破坏审计性，每个执行的调用有确定的归属。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

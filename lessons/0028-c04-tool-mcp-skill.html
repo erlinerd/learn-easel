@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A2 · Tool / MCP / Skill：能力的三种封装</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A2</div>
+  <h1>Tool / MCP / Skill：能力的三代封装</h1>
+  <p class="src">20 min · 同一个问题（给 agent 加能力）的三代答案，和它们背后的 token 危机</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A1」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>三者都是"给模型的手脚"，差别在<strong>怎么声明、怎么被发现、占多少上下文</strong>：
+  Tool 是代码级函数（schema 每次全量随请求），MCP 是跨进程的统一协议，
+  Skill 是<strong>markdown 写的按需加载能力包</strong>。Easel 全押注了 Skill——
+  因为它把"常驻成本"从全部能力降到一行索引。
+</div>
+
+<h2>一、三代演化的历史逻辑（每代解决上一代的什么痛）</h2>
+<p><strong>第一代：函数工具（2023）。</strong>L7 讲的机制。痛：每个 harness 自己注册函数，
+复用靠复制代码。更大的痛在后面——<strong>schema 常驻</strong>。</p>
+<p><strong>第二代：MCP（2024）。</strong>Model Context Protocol 把"工具服务器"标准化：
+工具以独立进程运行，harness 作为 client 连接（本地 stdio 或远程 HTTP），自动发现对方的
+tools / resources / prompts。于是生态出现——GitHub、数据库、浏览器各出官方 server，
+你的 agent 挂上就能用。<strong>解决：跨项目复用与生态</strong>。没解决：schema 还是全量进上下文，
+挂 10 个 server 几十个工具，窗口被吃掉一大块（后来加了 tool-search 缓解）。</p>
+<p><strong>第三代：Skill（2025）。</strong>把"能力"从<strong>函数</strong>升维成<strong>一套流程</strong>：
+SKILL.md（说明书，&lt;200 行）+ references（领域知识）+ scripts（可执行脚本）。
+harness 只把每个技能的 frontmatter（markdown 文件顶部两行 --- 之间的小块元数据，L6 详述；技能的只含 name + description，约一行）常驻注入，
+模型决定用哪个技能后<strong>才加载正文</strong>，脚本则永远不进 prompt 只被执行。
+<strong>解决：token 危机 + 能力的可读可审计</strong>（markdown 是人能审的，JSON schema 不是）。</p>
+
+<h2>二、token 算术（Skill 存在的硬理由）</h2>
+<pre><code>路线 A：100 个函数工具
+  常驻 = 100 × (name + description + schema) ≈ 100 × 25 token ≈ 2500 token / 每轮
+
+路线 B：114 个 Skill（Easel 实际规模）
+  常驻 = 114 × frontmatter 一行 ≈ 114 × 10 token ≈ 1100 token / 每轮
+  触发 2 个技能时另加 ≈ 2 × 2000（SKILL.md 上限 200 行）——用才付</code></pre>
+<p>差距看着只有两倍多，但真正的量级差在<strong>能力规模上限</strong>：路线 A 到 500 个工具时
+常驻 1.2 万 token（窗口的 1/8 永远被吃掉），路线 B 到 500 个技能时常驻仍只有约 5 千 token，
+且每个能力的"说明书"可以有 200 行深度。<strong>Skill 本质是把 schema 的'全量常驻'换成了'索引常驻 + 正文按需'</strong>——
+和操作系统的虚拟内存是同一个思想：页表常驻，页面按需调入。</p>
+
+<h2>三、三者不是互斥，是分层</h2>
+<p>真实系统常常共存：Easel 底层是 OpenClaw 的函数工具 + MCP 支持，<strong>上层</strong>用 Skill
+组织业务能力；OpenClaw 甚至把 MCP 工具包装成进程内函数统一执行（agent-bundle-mcp-materialize.ts）。
+选型只问一个问题：<strong>这个能力是"一个动作"还是"一套流程"？</strong>
+查天气=动作→工具；管理 issue=一组动作→MCP server；"做论文解读视频"=流程→Skill。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：工具描述互相重叠。</strong>两个工具 description 都写"获取数据"——路由抖动，
+每次选不一样的。描述要划边界（负空间），Easel 技能规范强制写"与相邻技能的边界"就是防这个。</p>
+<p><strong>坑 2：MCP server 挂一堆不用的。</strong>每个都贡献常驻 schema。原则：
+<strong>这个会话真会用吗？</strong>不会就别挂。</p>
+<p><strong>坑 3：Skill 写成没人能触发的文档。</strong>frontmatter 的 description 含糊（"处理内容相关任务"），
+模型永远路由不到。Skill 的 description 要写<strong>用户会怎么说</strong>（触发场景原话）。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验</h2>
+<p>给五个能力选封装形态并各说一句理由：查天气、管理 GitHub issue、写小红书笔记、读文件、
+做论文解读视频。再加一题：如果你要给公司内部 200 个业务操作做 agent 化，三代形态怎么组合？
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0027-c03-what-is-agent.html">← A1</a> · 下一课：<a href="0030-c06-loop.html">A3 循环</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. Skill 相对函数工具最核心的优势是？",
+  opts: ["正文按需加载省常驻", "运行速度有数量级提升", "不需要任何代码即可生效"],
+  answer: 0,
+  why: "frontmatter 一行常驻做路由，正文触发才进窗口——token 只为在用的能力付费。"
+});
+Quiz.render("q2", {
+  q: "2. MCP 解决的主要问题是？",
+  opts: ["跨进程工具接入的统一协议", "让模型推理速度更快", "替代大模型的记忆功能"],
+  answer: 0,
+  why: "外部工具服务器按统一协议挂进来，harness 把 MCP 工具包装成进程内函数执行。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

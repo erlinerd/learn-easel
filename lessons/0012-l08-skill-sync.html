@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L08 · 技能同步与调用链</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M3 能力层 · L08</div>
+  <h1>SKILL.md 怎么"到得了"agent 手里：同步与发现</h1>
+  <p class="src">45 min · 精读 openclaw/sync.sh + easel/openclaw_workspace.py(160行) · M3 毕业课</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L07」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>agent 读不到你仓库里的技能——它只读 <strong>OpenClaw workspace</strong>。
+  所以存在一条同步链，而这条链上最大的坑是 workspace 路径<strong>不能硬编码</strong>（issue #19 的教训）。
+</div>
+
+<h2>一、基础：为什么需要"同步"这件事</h2>
+<p>先建立一个反直觉的事实：<strong>你在 Easel 仓库里写好的 SKILL.md，agent 根本读不到</strong>。
+原因在架构（A17 三层图）：Easel 的 agent 不是个独立程序，是<strong>跑在 OpenClaw gateway 里</strong>的；
+而 OpenClaw 有自己的工作区概念（workspace）——它的文件视野、system prompt 拼装、
+技能发现<strong>都只认 workspace 目录</strong>。你的仓库在 <code>~/Code/Projects/easel-repo</code>，
+workspace 却在 <code>~/.openclaw-easel/workspace</code>——两个世界。</p>
+<p>所以需要一条<strong>同步链</strong>把仓库资产搬进 agent 的视野：</p>
+<pre><code>仓库 skills/openclaw/（114 技能）──sync.sh──▶ OpenClaw workspace/skills/
+                                              （agent 实际读取处）
+同时：workspace/AGENTS.md 注入项目根绝对路径；outputs/ 与 profiles/ symlink 进去</code></pre>
+<p>symlink（软链接）值得说一句：workspace 里的 outputs/ 不是副本，是<strong>指回仓库真目录的快捷方式</strong>——
+agent 写产物实际落进仓库，你在仓库里直接看到。副本会分叉，链接不会。</p>
+
+<h2>二、核心难题：workspace 路径是个移动靶</h2>
+<p>sync 到哪？你可能会说"写死 <code>~/.openclaw-easel/workspace</code> 不就行了"——
+Easel 用 160 行代码告诉你为什么不行。OpenClaw 跨版本<strong>改过布局</strong>：
+2026.6.x 是 <code>~/.openclaw/workspace-easel</code>，2026.9.x 变成
+<code>~/.openclaw-easel/workspace</code>。issue #19 的现象就是硬编码的墓碑：
+<strong>"sync 报成功但 agent 读不到技能"</strong>——同步脚本把技能写进了旧路径，
+agent 在新路径读，两边都"正常工作"，就是互相看不见。</p>
+<p>这类 bug 的恶劣之处：写入端成功（文件真的写了）、读取端正常（目录真的存在），
+故障发生在<strong>两端的假设不一致</strong>上——没有报错、没有日志，只有"技能怎么不生效"的灵异现象。</p>
+
+<h2>三、openclaw_workspace.py 的五级退化解析（160 行的精华）</h2>
+<ol>
+<li><code>EASEL_OPENCLAW_WORKSPACE</code> 环境变量（显式指定，最高优先级）</li>
+<li>问 <code>openclaw status --json</code> 拿 <code>workspaceDir</code>——<strong>运行时真相</strong>，最可靠</li>
+<li>openclaw.json 显式配置</li>
+<li>已有 skills 内容的候选目录（启发式）</li>
+<li>按版本猜默认（最后手段）</li>
+</ol>
+<p>读这套退化的设计哲学：<strong>永远问运行时，猜是最后手段</strong>。第 1-3 级都是"问 OpenClaw 自己"，
+只有前三级全部失败才退化到猜。第 2 级（status --json）是灵魂：路径是 OpenClaw 的内部状态，
+问它自己最准——就像想知道别人的收货地址，直接问本人，不要靠上次寄件单记忆。
+这个模式可迁移到一切"外部工具的内部路径"问题。</p>
+
+<h2>四、端到端串一遍（M1–M3 闭环）</h2>
+<p>用户 <code>easel skill xhs-note-creator -i "..."</code> → CLI 拼消息（L02）→
+agent（workspace 里被 sync 过的技能 + AGENTS.md 规则"先路由 SKILL"）→ 读 SKILL.md →
+cd 项目根（CONTEXT.md 的路径）→ 调 skills/shared/scripts/ → 产物落 outputs/。
+<strong>你已能讲清每一站。</strong>这条链上任何一环断掉的症状各不相同——
+L02 断了是"命令没反应"，这里断了是"技能不存在"，L09 会看到 Web 断了是什么样。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：同步用复制不用链接。</strong>outputs/ 复制进 workspace = 两份产物分叉，
+"我明明生成了怎么找不到"。<strong>坑 2：升级 OpenClaw 后不重新 sync。</strong>布局变了，
+旧 workspace 里的技能成孤儿——doctor 会检查"技能是否同步进 agent 实际读的 workspace"
+（这就是 doctor 检查清单里那条的意义）。<strong>坑 3：自己的 agent 也硬编码路径。</strong>
+issue #19 人人会踩——写"问运行时"的三行代码，省未来三天的灵异调试。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验 + 动手作业</h2>
+<p><strong>检验：</strong>用自己的话解释 issue #19 的现象、根因、和五级退化如何杜绝它。</p>
+<p><strong>作业（M3 毕业物）：</strong>写一个自己的技能目录：frontmatter 三字段 + SKILL.md（≤60 行）
++ 一个 references 文件。主题任选（比如"给我的项目生成周报"）。发我评审。</p>
+
+<footer class="nav">
+  <a href="0011-l07-shell-vs-script.html">← L07</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0013-l09-web-overview.html">L09 Web 后端鸟瞰</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 解析 workspace 路径最可靠的一级是？",
+  opts: ["问 openclaw status --json", "按版本号猜默认路径", "读取仓库里的常量配置"],
+  answer: 0,
+  why: "status --json 返回的是运行时真相；猜路径和常量都会在 OpenClaw 改布局时静默失效。"
+});
+Quiz.render("q2", {
+  q: "2. issue #19 的现象「同步成功但读不到」根因是？",
+  opts: ["同步写进了旧的路径", "技能的命名不合规范", "agent 忘记先路由技能"],
+  answer: 0,
+  why: "sync 与 agent 各自解析出不同的 workspace 目录，写入端和读取端不在同一处。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

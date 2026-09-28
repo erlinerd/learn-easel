@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L12 · 发布引擎总览与登录状态机</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M5 执行层 · L12</div>
+  <h1>发布引擎总览：七个平台，一套登录状态机</h1>
+  <p class="src">45 min · 精读 skills/shared/scripts/login_state.py + Web 端 LOGIN_RUNNERS</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L11」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>登录是<strong>分钟级长流程</strong>，所以 Web 后端不直接管浏览器——
+  它只读写一个<strong>原子写的 JSON 状态文件</strong>。状态机是发布系统的心脏。
+</div>
+
+<h2>一、基础：为什么登录是"长流程"，状态机是什么</h2>
+<p>先想登录到底要经过什么：打开登录页 → <strong>人</strong>拿出手机扫码 → 平台校验 →
+（可能）<strong>人</strong>再收短信输验证码 → 拿到凭证。两个特征：① 中间有<strong>人的参与</strong>，
+耗时不可预测（10 秒到 5 分钟都可能）；② 参与者不止一个——跑浏览器的后台脚本、
+展示二维码的 Web 页面、输验证码的用户。</p>
+<p>多个不可预测的参与者协作，工程上的标准解法是<strong>有限状态机</strong>（FSM）：
+把流程拆成有限个明确的"状态"，任何时刻系统处于且只处于一个状态，状态迁移由明确事件触发。
+这样每个参与者不需要知道其他人在干什么，只需要：<strong>读当前状态 → 干自己那步 → 写新状态</strong>。</p>
+<p>那"状态"存在哪、怎么共享？Easel 的答案是<strong>文件</strong>（login_state.py）：
+登录脚本和 Web 后端是两个独立进程，不共享内存——但共享同一个文件系统。
+脚本推进状态就改写 JSON 文件，Web 轮询读它。为什么不用 RPC/消息队列？
+登录一跑几分钟，常驻连接太重；状态文件让<strong>任意进程在任何时刻都能读到最后已知状态</strong>，
+崩溃后遗留的文件还是排查证据。这叫"文件即协议"。</p>
+
+<h2>二、状态机逐态走读（源码注释原文）</h2>
+<pre><code># login_state.py:7-9（原文）
+# 状态机：starting → qr_ready → [scanned] → [sms_required → verifying] → success | expired | error
+# （sms_required：扫码后平台风控要求短信验证，runner 等前端回填验证码——见 read_sms_code；
+#  verifying：已拿到验证码、正在提交校验，前端显示转圈；校验失败会退回 sms_required 让重输）</code></pre>
+<p>七个状态各自回答一个问题：<code>starting</code>（浏览器起了吗）→ <code>qr_ready</code>
+（二维码出来了，Web 端立刻展示给用户）→ <code>scanned</code>（用户扫了，等平台确认）→
+<code>sms_required</code>（风控加验，等人输码）→ <code>verifying</code>（码已提交，转圈）→
+三个终态：<code>success</code> / <code>expired</code>（码过期重扫）/ <code>error</code>。</p>
+<p>两个工程细节值得停一下。<strong>① 原子写</strong>：JSON 文件可能正被 Web 读取时被脚本更新——
+直接覆写会让读者拿到"写了一半"的损坏 JSON。解法是先写临时文件再 <code>rename</code>
+（原子操作，任何时刻读者要么看到旧完整版要么看到新完整版）。<strong>② 一次性验证码文件</strong>：
+抖音短信码走 <code>outputs/_login/douyin.code</code>，脚本<strong>读走即删</strong>——
+用过即毁防重放；<code>.resend</code> 后缀文件作重发信号。文件名即协议，零基础设施。</p>
+
+<h2>三、七平台 × 三种登录形态</h2>
+<table>
+  <tr><th>形态</th><th>平台</th><th>登录态存储</th><th>为什么不同</th></tr>
+  <tr><td>Playwright 持久化目录</td><td>小红书/抖音/快手/视频号/知乎/公众号</td><td class="mono">~/.easel-browser-profiles/&lt;X&gt;Profile</td><td>网页后台，浏览器是唯一接口（A16）</td></tr>
+  <tr><td>TV 端扫码 API（无浏览器）</td><td>B 站</td><td>项目根 cookies.json（biliup 兼容）</td><td>B 站有公开 TV 端扫码协议——API 优先于浏览器，能用 API 不开浏览器</td></tr>
+  <tr><td>官方 API 凭证</td><td>公众号（--official-api 回退）</td><td>yaml 配置</td><td>官方 API 需 app_secret + IP 白名单，所以网页会话是默认、API 是回退</td></tr>
+</table>
+<p>小红书的特殊降级：无头浏览器被风控拦截（300012）时，脚本自动改开 CloakBrowser
+有头窗口扫码（xhs_publish.py:135/:684）——无头是常规路径，不是保底（正课 L13 展开）。</p>
+<p><strong>登录态永不入库</strong>：profiles 在用户家目录 <code>~/.easel-browser-profiles/</code>，
+AGENTS.md 明令禁止提交真实 Cookie——登录态=身份（A16），入库=把身份放进 git 历史。</p>
+
+<h2>四、Web 端怎么消费：LOGIN_RUNNERS 注册表</h2>
+<p>Web 后端对七个平台不做七份代码——一张注册表 <code>LOGIN_RUNNERS</code>：
+每个平台登记自己的 runner 脚本路径和参数，<code>POST /api/login/{platform}</code> 按
+注册表 Popen 后台脚本，然后轮询状态文件渲染二维码。<strong>加第八个平台 = 加一行注册</strong>，
+不动引擎。这就是"引擎 + 注册表"模式：变化的（平台差异）与不变的（状态机/文件协议）分离。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：轮询不设终局。</strong>Web 一直轮询状态文件——expired/error 是终态，
+轮询必须能停。<strong>坑 2：验证码文件不删。</strong>用过的 code 留在磁盘 = 凭证泄露面。
+<strong>坑 3：状态写进日志而非文件。</strong>脚本 stdout 的进度只有活着的进程能看到；
+状态文件死了也在。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>画出抖音完整登录时序（含短信墙分支），标注：每一步谁写状态文件、Web 在哪一步轮询、
+验证码文件的生命周期（生成→消费→销毁）。讲给我听。</p>
+<p><strong>一手源：</strong><code>skills/shared/scripts/login_state.py</code> 全文 + web/app.py 的 LOGIN_RUNNERS。</p>
+
+<footer class="nav">
+  <a href="0015-l11-session-engineering.html">← L11</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0017-l13-xhs-publish.html">L13 xhs_publish.py 精读</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 登录状态文件为什么要原子写？",
+  opts: ["读者不会见到半个 JSON", "写盘速度能显著更快", "操作系统强制这样要求"],
+  answer: 0,
+  why: "Web 在轮询读取，非原子写会让读者拿到损坏的中间态；rename 保证任何时刻文件完整。"
+});
+Quiz.render("q2", {
+  q: "2. B 站登录为什么和其他平台形态不同？",
+  opts: ["TV 端扫码 API 免浏览器", "B 站封禁了所有浏览器", "Playwright 不支持其域名"],
+  answer: 0,
+  why: "TV 端公开 appkey 扫码直接换 token，写成 biliup 兼容 cookie 即可 HTTP 上传，零浏览器成本。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

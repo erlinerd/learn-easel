@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A11 · 评测与可观测</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A11</div>
+  <h1>评测与可观测：你怎么知道 agent 好使</h1>
+  <p class="src">20 min · 三层评测各配真实断言示例 + judge 校准流程</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A10 常见设计模式」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>agent 的质量要靠三层评测兜住——
+  <strong>组件级</strong>（工具对不对）、<strong>轨迹级</strong>（步骤对不对）、<strong>结果级</strong>（最终对不对）；
+  加上可观测（轨迹留痕）才能定位失败。<strong>改 prompt 前先有基线，改完跑回归</strong>——
+  没有评测的改动全凭感觉。
+</div>
+
+<h2>一、三层评测，各配真实断言</h2>
+<p><strong>组件级：工具/脚本的行为，确定性断言。</strong>成本最低、最先建。</p>
+<pre><code># Easel 实例：48 个脚本中 39 个带 selftest 子命令——离线自检不花 API 钱
+$ python xhs_publish.py selftest          # 校验 SELECTORS 字典完整、参数解析、纯函数断言
+
+# 你的 agent 同理：
+def test_read_file_truncates():
+    result = execute("read_file", {"path": "big.log"})
+    assert len(result) &lt;= 4000            # 截断契约</code></pre>
+<p><strong>轨迹级：agent 走的路径合理吗。</strong>完全自由的路径没法逐字断言，
+退而求其次断言<strong>检查点</strong>——该发生的步骤发生了、不该发生的不存在：</p>
+<pre><code>轨迹 = run_agent("帮我发一条小红书")
+assert "skill-xhs-publisher" in 轨迹.加载的技能      # 路由对了
+assert "content_guard" in 轨迹.调用的脚本            # 过闸门了
+assert 轨迹.工具调用次数 &lt;= 15                      # 没失控
+assert "publish --exec" not in 轨迹.命令 or 轨迹.有人确认   # 真发前有确认</code></pre>
+<p>Easel 的 tests/ 目录就是这个思路的制度化：每个技能的 tests/ 放 <code>test1.prompt</code>（输入）
++ <code>test1.expected</code>（关键词）——跑完检查输出是否命中关键词。</p>
+<p><strong>结果级：最终产物达标吗。</strong>最贵也最硬。能机械断言的机械断言
+（文件非空、字数区间、视频时长）；不能的用 LLM-as-judge。
+Easel 最漂亮的结果级 eval 是 <strong>readback 对账</strong>：发布后回创作者中心查作品列表，
+四档结论里 verified 才算真成功——<strong>用平台侧事实做验收，比任何模型自评都硬</strong>。</p>
+
+<h2>二、LLM-as-judge：有用，但要校准（流程）</h2>
+<p>让强模型按 rubric 给输出打分是规模化评测的常用手段。已知偏差：偏好长回答、偏好自家风格、
+<strong>位置偏差</strong>（对比时倾向选第一个）。校准四步：</p>
+<ol>
+<li>人工标注 50–100 条金标（好/坏/边界各占一些）</li>
+<li>让 judge 评这批，算与人工的<strong>一致率</strong>（低于 80% 说明 rubric 或 judge 不行）</li>
+<li>rubric 写<strong>可观察项</strong>不写形容词（"含至少 1 个数据来源引用"，不是"内容详实"）</li>
+<li>上线后 judge 初筛 + <strong>分歧样本人来终审</strong>，定期把终审结果回流金标集</li>
+</ol>
+
+<h2>三、可观测：评测说"不好"，轨迹说"坏在哪步"</h2>
+<p>最低配置两件事：<strong>完整轨迹落盘</strong>（每步的消息、工具调用、结果——就是 A3 铁律②的 transcript，
+留痕既是安全设计也是调试设施）+ <strong>失败样本可重放</strong>（拿当时的确切输入重跑）。
+Easel/OpenClaw 侧的三层留痕：transcript jsonl 只追加可回放（L18）、每轮事件落盘断线重放（L10）、
+发布留痕 publish-log（L14）。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：只评结果不看轨迹。</strong>结果对了但路径是"绕了 20 步碰对的"——
+下次同样输入就翻车。轨迹检查点必须建。</p>
+<p><strong>坑 2：eval 集过拟合。</strong>照着 20 个测试样例调 prompt 到全绿——新输入立刻退化。
+eval 集要持续补真实失败案例（每上线翻车一个，回填一个 eval）。</p>
+<p><strong>坑 3：用最强模型 judge 一切。</strong>judge 比被评对象弱才有意义的问题不大，
+但注意 judge 与被评同源时的自偏好——换家 provider 做 judge 是便宜的解毒剂。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验</h2>
+<p>给"自动写周报的 agent"设计三层评测：每层至少 2 条具体断言（能直接变代码的程度），
+并说明失败样本怎么留痕重放；再给"周报质量"设计一个 judge rubric（≥3 个可观察项）。
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0031-c07-patterns.html">← A10 常见设计模式</a> · 下一课：<a href="0037-c13-safety.html">A12 安全</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 「发布后回平台对账」属于哪一层评测？",
+  opts: ["结果级评测", "组件级评测", "轨迹级评测"],
+  answer: 0,
+  why: "它验收最终产物（内容真的发出去了）——用平台侧事实做验收，比模型自评可信。"
+});
+Quiz.render("q2", {
+  q: "2. LLM-as-judge 的位置偏差指的是？",
+  opts: ["对比时偏向第一个", "偏爱长篇的回答", "只给中间档分数"],
+  answer: 0,
+  why: "位置偏差是对比评测的已知问题；缓解：随机排序 + 金标集校准一致率。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

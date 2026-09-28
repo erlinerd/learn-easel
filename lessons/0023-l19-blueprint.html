@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L19 · 毕业蓝图：给你的 agent 画六件套</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M7 输出 · L19</div>
+  <h1>毕业蓝图：六件套设计工作表</h1>
+  <p class="src">45 min · 产出一份设计文档（六件套逐件决策）· 下一课按图实现</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L18」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>读别人一万行，不如为自己的 agent 写对六张决策卡。
+  每件套只需回答：选项有哪些 → 我选什么 → 为什么（一句话能说清的为什么）。
+</div>
+
+<h2>一、基础：设计文档为什么要"卡"而不要"文"</h2>
+<p>新手写设计文档的通病：三千字散文，读的人找不到决策在哪。决策卡格式强制你把
+<strong>选项、选择、理由</strong>三件事写在一行——它的隐藏价值是"一句话测试"：
+<strong>如果一个决策的理由说不成一句话，说明你自己还没想清楚</strong>。
+六张卡 = 六个强制想清楚的关口。另外每张卡都有"默认答案"（Easel 的选择）——
+<strong>先抄默认再偏离</strong>是工程决策的正道：偏离默认的人必须能说出理由，
+抄默认的人不需要理由。</p>
+
+<h2>二、六张决策卡模板（逐张填写）</h2>
+<table>
+  <tr><th>#</th><th>构造块</th><th>决策点</th><th>Easel 的答案（参考）</th><th>我的选择</th></tr>
+  <tr><td>1</td><td>Harness</td><td>自研 loop 还是复用？</td><td>复用 OpenClaw</td><td>____</td></tr>
+  <tr><td>2</td><td>提示词栈</td><td>几层？各层写什么/不写什么？</td><td>SOUL/AGENTS/CONTEXT/SKILL 四层</td><td>____</td></tr>
+  <tr><td>3</td><td>能力系统</td><td>函数工具还是技能目录？路由靠什么？</td><td>技能目录 + frontmatter 路由</td><td>____</td></tr>
+  <tr><td>4</td><td>分工线</td><td>哪些固化给脚本？</td><td>碰环境的全给脚本</td><td>____</td></tr>
+  <tr><td>5</td><td>记忆状态</td><td>作用域多大？怎么持久化？</td><td>画像分域 + jsonl 追加</td><td>____</td></tr>
+  <tr><td>6</td><td>安全边界</td><td>什么硬拦？什么只提醒？对账怎么做？</td><td>exit7 闸门 + dry-run + readback</td><td>____</td></tr>
+</table>
+<p>每张卡的决策依据都在课程里：卡 1 看 A17 四问、卡 2 看 A5/L04、
+卡 3 看 A2/L06 的 token 算术、卡 4 看 L07 短板互补与 A4 工具设计、
+卡 5 看 A6 串味推演、卡 6 看 A12 阶梯 + L14 证据链。<strong>这门课的全部内容就是这六张卡的论据库。</strong></p>
+
+<h2>三、示范：填好的一张卡长什么样（以卡 4 为例）</h2>
+<pre><code>卡 4 · 分工线
+选项：a) 全给模型（prompt 里写流程，模型直接调浏览器）
+     b) 全给脚本（连文案都模板生成）
+     c) 碰环境的归脚本，决策归模型
+选择：c
+理由：模型会软失败且数不清字数（L5/L2），但只有它能理解需求写文案；
+     脚本确定可测但不会创作——各干各的强项。
+边界实例：字数校验=脚本；"这条笔记面向谁写"=模型。</code></pre>
+<p>注意这份卡的信息密度：有选项（说明考虑过 alternatives）、有理由（引用了课程机理）、
+<strong>有边界实例</strong>（把抽象分工落到具体判断）。你的六张卡都应该有这个密度——
+尤其"边界实例"，它是最能暴露"以为想清楚了其实没有"的地方。</p>
+
+<h2>四、三个校准问题（填完自问）</h2>
+<p>① 你的 agent 最重要的<strong>不可逆操作</strong>是什么？它的证据链在哪张卡上？<br>
+② 你的常驻 token 预算是多少？哪些内容必须按需加载？<br>
+③ 如果明天模型供应商倒闭换 provider，你的设计里哪几张卡要重写？<br>
+（好答案：最多一张。模型相关的只有卡 1 的 provider 选择——六件套的其他五件都该是
+provider 无关的。如果你的卡 3、卡 5 也要重写，说明业务资产长在 harness 上了，A17 坑 3。）</p>
+
+<h2>五、规模约束（为 L20 实现预留）</h2>
+<p>目标 200–300 行：单文件 Python、OpenAI 兼容 API、2-3 个工具、1 个技能目录、1 个出站闸门。
+<strong>约束是设计工具</strong>——写不进 300 行的设计是过度设计。
+自检清单：你的六张卡里有没有"先做通用框架"？删掉——300 行只够做<strong>一个具体场景</strong>。
+Easel 自己也是从具体场景长出来的（先有发布，后有 114 技能）。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：六张卡全偏离默认。</strong>每张都自创 = 六个未验证的新想法同时上马——
+失败了你不知道是哪张卡的锅。<strong>坑 2：卡与卡不自洽。</strong>选了技能目录（卡 3）却设计了
+50 个函数工具；选了分域记忆（卡 5）却在卡 2 写全局记忆文件——卡要互查。<strong>坑 3：
+安全卡留白。</strong>"边界以后再加"——A12 讲过，注入面第一天就在。<strong>坑 4：
+卡里只有结论没有边界实例。</strong>抽象的"分工给脚本"没有落地——每张卡配一个具体判断案例。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>把六张决策卡（含"为什么"+ 至少一张带边界实例）发给我评审。我重点看：每张卡的"为什么"
+是否一句话能说清、卡与卡之间是否自洽、边界实例是否真的具体。</p>
+<p><strong>参考：</strong><a href="../reference/agent-anatomy.html">六件套速查</a> 的"关键构造决策"表——默认答案都在。</p>
+
+<footer class="nav">
+  <a href="0022-l18-compaction.html">← L18</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0024-l20-capstone.html">L20 实现与复盘</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 决策卡的「一句话测试」检验的是什么？",
+  opts: ["理由是否被真正想清楚", "文档是否足够简短", "决策是否足够创新"],
+  answer: 0,
+  why: "说不成一句话的理由 = 自己还没想清楚；卡片格式强制通过这个测试。"
+});
+Quiz.render("q2", {
+  q: "2. 换 provider 时好的设计应该重写几张卡？",
+  opts: ["最多一张（卡1 的 provider 选择）", "全部六张都要重写", "至少三张核心卡"],
+  answer: 0,
+  why: "六件套其他五件都该是 provider 无关的——要重写多张说明业务资产长在了 harness 上。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

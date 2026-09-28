@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A9 · 多智能体</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A9</div>
+  <h1>多智能体：上下文隔离的收益，协调的代价</h1>
+  <p class="src">20 min · 一张成本账单、两种组织形态、三个失败模式</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A8 RAG 与检索」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>多智能体解决的是<strong>上下文隔离</strong>问题（各自干净窗口、并行、专门化），
+  不是"更聪明"。代价是协调成本与误差传播。<strong>默认单 agent + 工具，
+  确有隔离/并行/专门化需求才拆。</strong>
+</div>
+
+<h2>一、为什么拆：三个真实动机（每个都关于上下文）</h2>
+<p><strong>① 隔离：别让中间产物污染主线。</strong>子任务会产生大量中间内容——搜索结果、试错日志、
+被否决的草稿。全堆在主窗口，主线任务的有效注意力被稀释（A5 的账单视角）。
+子 agent 用完即弃，<strong>只回传结论</strong>——本质是把 A5"蒸馏不搬运"做成了组织结构。</p>
+<p><strong>② 并行：广度搜索的天然形态。</strong>"调研三个竞品"拆三个子 agent 同时跑，
+墙钟时间 1/3。Anthropic 的多 agent 研究系统就是典型：lead 拆解方向 → 并行 search 子代理 →
+综合（见课后一手源）。</p>
+<p><strong>③ 专门化：不同人格/工具集/温度。</strong>检索代理用低温度+搜索工具，
+写作代理用高温度——单 agent 里切换人格不如拆开干净。</p>
+
+<h2>二、一张成本账单（拆之前先算）</h2>
+<pre><code>单 agent 完成"调研 3 个竞品"：
+  1 条上下文 × 12 轮 ≈ 12 份历史成本
+
+编排者 + 3 子代理：
+  主 agent：3 轮（派发×1 + 收结论×2）≈ 3 份历史
+  子代理：各 4 轮 × 3 份独立历史 ≈ 12 份历史
+  额外：任务描述 ×3 + 结论回传 ×3 ≈ +2 份
+  ≈ 17 份，且主/子不能共享缓存前缀（system 不同）
+结论：token 通常涨 30–100%，换隔离与并行</code></pre>
+<p>这笔账什么时候划算：中间产物巨大（搜索结果几千 token 一轮）、任务可并行、
+或子任务需要不同配置。什么时候不划算：任务本身 5 轮内能做完——<strong>拆了纯亏</strong>。</p>
+
+<h2>三、两种组织形态</h2>
+<table>
+  <tr><th>形态</th><th>怎么运作</th><th>例子</th><th>关键设计点</th></tr>
+  <tr><td><strong>编排者-子智能体</strong></td><td>主 agent 派任务、收结论、做汇总；子 agent 独立上下文用完即弃</td><td>Anthropic 研究系统</td><td>任务描述要自包含（子 agent 看不到主对话）；结论必须带证据</td></tr>
+  <tr><td><strong>交接 handoff</strong></td><td>整个会话转给更合适的 agent，历史随会话走</td><td>客服：通用 → 退款专员</td><td>交接时附上下文摘要，别让用户重述</td></tr>
+</table>
+<p>实现侧（OpenClaw）：子 agent 走独立 lane 并发隔离（并发数可配），
+主会话串行不被阻塞；Web 端甚至检测 `[agent] delegat` 输出给用户显示"🛠️ 制作中"（正课 L17 附近）。</p>
+
+<h2>四、三个失败模式（拆之前必读）</h2>
+<p><strong>① 误差传播。</strong>子代理幻觉了一条"竞品定价 299 元"，主代理当事实写进报告——
+主代理<strong>无法分辨</strong>子代理结论的真伪。对策：验收协议——子任务回传必须带
+<strong>结论 + 证据 + 引用</strong>（"定价 299 元，来源：对方官网价格页，抓取于 14:02"），
+主代理对关键结论抽查证据。</p>
+<p><strong>② 任务描述丢失上下文。</strong>"去查一下那个品牌的定价"——哪个品牌？子 agent 看不到主对话。
+任务描述必须自包含：品牌全名、查什么、输出什么格式、时间范围。</p>
+<p><strong>③ 结果冲突无人裁决。</strong>两个子代理给了矛盾的结论，主代理和稀泥或随机选。
+对策：编排者的汇总提示里显式写"若结论冲突，列出分歧与各自证据，不要擅自取舍"。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：为了"更强"而拆。</strong>推理能力不随 agent 数量增加——拆分解决隔离与并行，
+不解决智力。难题该换模型或加反思（A10 模式 4）。</p>
+<p><strong>坑 2：没有验收协议就并行。</strong>回传自由文本，主代理又要一轮理解——隔离的 token 又赚回去了。
+回传格式定死（结构化，A7）。</p>
+<p><strong>坑 3：子代理共享可变状态。</strong>两个子代理同时写一个文件——并发问题的老朋友。
+子任务之间要么无共享，要么由编排者分发和回收。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>三个场景判断拆/不拆并算账（token 与收益）：① 一篇文章三个角度的资料搜集；
+② 修一个 bug；③ 客服系统里退款、技术支持两类请求。
+再答：如果拆①，给子代理的任务描述和回传格式各怎么写？发到对话里我批改。</p>
+<p><strong>一手源：</strong><a href="https://www.anthropic.com/engineering/built-multi-agent-research-system">Anthropic · How we built our multi-agent research system</a>。</p>
+
+<footer class="nav">
+  <a href="0034-c10-rag.html">← A8 RAG 与检索</a> · 下一课：<a href="0031-c07-patterns.html">A10 常见设计模式</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 多智能体解决的核心问题是？",
+  opts: ["上下文的隔离与并行", "让推理能力大幅变强", "减少 token 的总消耗"],
+  answer: 0,
+  why: "拆分换隔离/并行/专门化；总 token 通常反而增加（任务描述+结果回传）。"
+});
+Quiz.render("q2", {
+  q: "2. 「误差传播」指的是什么风险？",
+  opts: ["子代理幻觉被当事实", "多个代理互相等待死锁", "API 费用超出预算上限"],
+  answer: 0,
+  why: "主代理无法分辨子代理结论的真伪；所以子任务要可独立验收、结论带证据。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

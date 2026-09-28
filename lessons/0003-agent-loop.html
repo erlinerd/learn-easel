@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 3 课 · Loop 的实现</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 第 3 课</div>
+  <h1>Loop 的实现：agent 循环的真实代码长什么样</h1>
+  <p class="src">10 分钟 · 读完你能徒手写出 agent loop 的骨架</p>
+</header>
+
+<aside class="note">📦 <strong>存档</strong>：本课内容已并入前置课 <a href="0030-c06-loop.html">A3 循环</a>（通用版）与正课 <a href="0020-l16-loop-reading.html">L16 loop 精读</a>（OpenClaw 实现版），此页保留作速查存档。</aside>
+
+<div class="verdict">
+  <strong>本课唯一结论：</strong>agent loop 没有魔法——它是一个
+  <strong>双层 while</strong>：<code>while(还有工具要执行) { 调模型(流式) → 执行工具 → 结果回填 }</code>，
+  外面再包一层管重试、压缩和排队的 <code>while(true)</code>。全部"智能"来自
+  <strong>stopReason 判定 + 结果回填</strong>这两个动作的循环。
+</div>
+
+<h2>一、loop 在哪（血统与坐标）</h2>
+<p>Easel 六件套的 ① 号（Harness）借 OpenClaw 实现；OpenClaw 的 loop 本体在
+<code>packages/agent-core/src/agent-loop.ts</code>（1562 行），血统来自 badlogic（Mario Zechner）的
+pi-mono——被 vendored 进仓库深度改造（THIRD_PARTY_NOTICES 明确致谢）。</p>
+<pre><code>gateway 收 /v1/chat/completions
+ → agentCommand（准入）
+  → runPreparedEmbeddedLoop        外层 while(true)：重试/compaction/排队
+    → runEmbeddedAttempt           装配工具 + 系统提示词 + 历史
+     → runAgentLoop → runLoop      agent-loop.ts:214 ← 真正的双层 while</code></pre>
+<aside class="note">分层不是摆设：<strong>外层管"这次 run 活着"</strong>（重试预算 32–160 次、
+超时、compaction 后续跑），<strong>内层管"这一步做什么"</strong>。看懂这层分工，读任何
+agent 源码都不会迷路。</aside>
+
+<h2>二、一次迭代做七件事（骨架）</h2>
+<pre><code>while (hasMoreToolCalls):                # 内层：agentic 主循环
+  ① abort 检查（用户喊停就收尾）
+  ② pending/steering 消息提交进 transcript
+  ③ streamAgentResponse 调 LLM           # 流式：text_delta 逐个发事件
+       流中 toolcall_end → 工具提前入队   # 不等流结束就开始干活
+  ④ stopReason 判定：
+       toolUse → 执行工具 → 继续
+       error / aborted → 终止
+       stop → 看 endTurn / terminate 钩子
+  ⑤ tool results 追加回 context.messages  # ← 整个"agentic"的秘密就在这行
+  ⑥ turn_end 事件 → prepareNextTurn 钩子  # 可中途换模型/思维档
+  # hasMoreToolCalls 为假才出内层
+排空 followUp 队列；无新消息 → agent_end</code></pre>
+<p>⑤ 是第一性设计：<strong>工具失败不是抛异常，是构造 <code>isError: true</code> 的结果消息回填</strong>——
+模型看到失败原因，下一轮自我纠正。用户看到的是 agent"想了一下又试了一次"，不是报错。</p>
+
+<h2>三、三个最容易误解的点</h2>
+<p><strong>① compaction（上下文压缩）不是停止。</strong>它发生在 assistant 消息之后：
+tokens 超过 <code>contextWindow − 16384</code> 预留就触发，LLM 生成摘要，压缩条目
+<strong>追加</strong>进 transcript（历史永不重写，可回放可审计），然后 <code>continue()</code> 续跑。</p>
+<p><strong>② 工具是进程内函数，不是子进程。</strong>形态统一为
+<code>execute(toolCallId, args, signal)</code>，MCP 工具也被包装成同形态；串行或并行按批次配置。</p>
+<p><strong>③ 同会话严格串行。</strong>每会话一个 lane（并发=1）+ <code>Agent.prompt</code> 重入保护；
+不同会话不同 lane 天然并行。所以 Easel 才敢让多个浏览器标签页共享一条 raw-stream 文件。</p>
+
+<h2>四、Easel 怎么"接到"这个 loop（集成契约）</h2>
+<p>OpenClaw 的流走事件总线；对外部消费者另开一条<strong>旁路</strong>：
+设 <code>OPENCLAW_RAW_STREAM=1</code> 后，所有 text/thinking delta 以 JSONL
+<strong>best-effort</strong> 追加到 <code>/tmp/easel-raw-stream.jsonl</code>（失败静默，绝不影响 run）。
+Easel 的 Web 后端每轮开始记住文件尾偏移 → tail 新增行 → 用首个新事件的
+<code>runId</code> 闩锁认领自己这轮（隔离并发会话）→ 转 SSE 推给浏览器。</p>
+<p>另一处值得抄：Easel 的 supervisor/forward 分离——<strong>浏览器断开只断转发，agent 照跑到底</strong>，
+结果落盘，回来经 <code>/api/chat/last</code> 取回（web/app.py:2064-2066 注释原文）。
+长任务 agent 的 Web 集成，这是标准答案。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+<div id="q3"></div>
+
+<h2>六、下一步</h2>
+<p><strong>一手源推荐：</strong>
+<a href="https://github.com/openclaw/openclaw/blob/main/packages/agent-core/src/agent-loop.ts">agent-loop.ts（GitHub）</a>
+本机也有浅克隆 <code>/tmp/openclaw-src</code>（临时目录）。先只读 <code>runLoop</code>（:214-436）这一段，
+对照本课骨架逐行找七件事；再看 <a href="https://docs.openclaw.ai">docs.openclaw.ai</a> 的
+agent-loop 概念文档交叉印证。配套速查：<a href="../reference/agent-loop-cheatsheet.html">Loop 解剖速查表</a>。</p>
+
+<footer class="nav">
+  任何不清楚的地方，直接回对话里问你的 agent 老师。<br>
+  开始读源码前，先看：<a href="0004-reading-path.html">第 4 课 · 从哪里开始读（精读路线图）</a>。
+</footer>
+
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. OpenClaw 的 loop 里，什么决定「继续下一轮」？",
+  opts: ["stopReason 为 toolUse", "stopReason 为 stop", "stopReason 为 length"],
+  answer: 0,
+  why: "toolUse = 模型要用工具，执行完回填结果继续循环；stop 才看 endTurn/terminate 钩子；length 是截断。"
+});
+Quiz.render("q2", {
+  q: "2. 工具执行抛异常时，OpenClaw 怎么处理？",
+  opts: ["作为失败结果回传给模型", "立即终止整轮的对话循环", "重试三次后再报错给用户"],
+  answer: 0,
+  why: "构造 isError:true 的 toolResult 回填进 messages——模型看到失败原因后自我纠错，这是 agentic 可靠性的第一性设计。"
+});
+Quiz.render("q3", {
+  q: "3. compaction（上下文压缩）之后，会话历史怎么处理？",
+  opts: ["追加压缩条目不改写原文", "整体重写会话历史文件", "清空历史让模型重新开始"],
+  answer: 0,
+  why: "transcript 只追加不重写：compaction 也作为 entry 落盘（含 summary/firstKeptEntryId），可回放可审计。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L03 · AGENTS.md 精读</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M2 大脑层 · L03</div>
+  <h1>AGENTS.md 精读：agent 的行为法典</h1>
+  <p class="src">45 min · 精读 openclaw/workspace/AGENTS.md（111 行）——全项目最重要的一份文件</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L02」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>agent 的"职业素养"一大半是这 111 行写出来的。
+  六条核心规则每条都对应一类<strong>真实事故</strong>——规则不是风格偏好，是事故报告的浓缩。
+</div>
+
+<h2>一、基础：AGENTS.md 这种文件是什么</h2>
+<p>AGENTS.md 是一个<strong>新兴的开放约定</strong>（agents.md 规范）：仓库根或工作区放一份
+AGENTS.md，给"在这个仓库里干活的 AI agent"读——相当于给新同事的 onboarding 文档。
+它和 README 的分工：README 给<strong>人</strong>讲项目是什么，AGENTS.md 给 <strong>agent</strong> 讲
+怎么在这个项目里正确干活（构建命令、目录规约、行为边界）。OpenClaw 把工作区的
+AGENTS.md 拼进 system prompt（正课 L16 站 4 会看到拼装代码）——
+所以它不是"参考文档"，是<strong>每轮都生效的行为法典</strong>。</p>
+<p>读法的预期要摆正：111 行不是给模型看的散文，是<strong>给模型的操作系统配置</strong>——
+每一行都应该能回答"这条防的是什么事故"。下面逐条验货。</p>
+
+<h2>二、六条核心规则 × 六类事故（原文逐条）</h2>
+<p><strong>规则 1（:7）"先路由 SKILL"——防凭记忆裸做。</strong>原文："每轮任务（含追问、换题）结合当前
+平台、账号、画像、主题和上一产物，先找精确匹配的 SKILL……无精确匹配时复用最接近的 SKILL，
+无相关 SKILL 才用通用能力。"事故形态：模型觉得自己"会写文案"就凭参数记忆裸写，
+跳过技能里沉淀的数据源、字数口径、平台规格。<strong>注意"含追问、换题"</strong>——
+长对话里模型最容易在第 5 轮开始飘，所以每轮都要路由（A3 注意力衰减）。</p>
+<p><strong>规则 2（:8）"先到项目根"——防相对路径失配。</strong>原文："每次准备运行本项目的第一个脚本时，
+必须先 cd 到本文件末尾'运行时项目根'的绝对路径，确认 .env 和 skills/shared/scripts/ 存在，
+再使用 skills/... 根相对路径。"事故形态：OpenClaw 的 CWD 在 workspace 不在项目根，
+<code>skills/...</code> 全部 404。为什么不支持 --cwd 参数？OpenClaw 不支持（prompt-stack.md 明说），
+所以用"先 cd"这个动作约定。</p>
+<p><strong>规则 3（:9）"不在 workspace 跑项目副本"——防幽灵执行。</strong>sync.sh 会把技能同步进 workspace
+（L08），workspace 里有 skills/ 的<strong>副本</strong>——从副本跑脚本 = 产出落错地方、
+改了仓库源码也不生效。规则 2+3 组合起来才是完整的"CWD 卫生"。</p>
+<p><strong>规则 4（:10）"查现有信息再提问"——防反向打扰。</strong>原文："先查登录态、画像、历史产物和本地配置；
+只有关键输入确实无法推断时才问用户。"事故形态：登录态就在磁盘上，agent 问用户"你的小红书账号是？"
+——A15 说的最败好感行为，在这里被写成铁律。</p>
+<p><strong>规则 5（:11）"付费操作先确认"——防模型烧钱。</strong>原文："生图、生视频、音乐等按量计费操作
+先给范围、计划和可得的费用预估，等用户确认后再发请求。"事故形态：模型自主调 AI 视频生成，
+一次几十块。A12 阶梯第 3 级的落点。</p>
+<p><strong>规则 6（:12）"真实产物才算完成"——防表演式交付。</strong>原文："不以计划、空壳文件、中途文件
+或仅有提示词冒充成品；交付前必须自检。"事故形态：模型说"已经生成好了"，
+实际 outputs/ 里只有一个占位符。<strong>这是 LLM 软失败（A13）在交付侧的防御</strong>：
+模型可能真诚地相信自己完成了。</p>
+
+<h2>三、三段容易被略读但极重要的正文</h2>
+<p><strong>「配置检查」节（:16-23）——对抗模型的错误推理链。</strong>这段在教模型认识自己的感知局限：
+"<code>env / printenv</code> 看不到未 export 的 .env；workspace 下 ls -a 也看不到项目根 .env，
+二者都不能用于宣称缺配置"。为什么需要写这个？因为模型会这样推理：
+"我 printenv 没看到 ANTHROPIC_API_KEY → 用户没配 → 让他去配"——<strong>感知局限被当成了世界事实</strong>。
+补丁：检查配置只认 <code>model_registry.py configured</code> 的脱敏结果，不 cat .env、不回显 Key。
+这是对<strong>模型认知偏差</strong>的定向防御，一般教程根本不会写。</p>
+<p><strong>「编排与日历」节（:43-47）——薄索引协议。</strong>"跨两层以上时用 manifest.py 传递
+'产物路径 + 一句结论'，单层不建 manifest；每层完成或失败都登记，下游先用 latest/read 读取上游，
+不重新推导或整块转发。"A5 蒸馏原则 + A14 manifest 的完整落地（正课 L08/L12 前后呼应）。</p>
+<p><strong>「素材与画像」节（:88-104）——记忆作用域宪法。</strong>四个"不"：
+全局 MEMORY.md <strong>不读不写不检索</strong>（:95）；不为切画像改写全局文件（:96）；
+不向其他画像借用经验（:94）；附件只用清单明列路径、<strong>禁止扫描猜测</strong> outputs/_inbox/（:91）。
+最后这条还是 A12 间接注入的防御——附件目录是可被投毒的外部输入面。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：把 AGENTS.md 当 README 写。</strong>堆项目介绍和历史——agent 不需要，
+它需要的是可执行规则。<strong>坑 2：规则没有事故对应物。</strong>"要严谨""要友好"这类空规则
+模型无法执行——每条规则要能回答"防什么"。<strong>坑 3：只写一次不管衰减。</strong>
+关键规则要靠 TURN_REMINDER 每轮重申（L05）——AGENTS.md 是宪法，不是全部法律。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验</h2>
+<p><strong>合上文件</strong>，复述六条规则；并为每条编一个"违反后的翻车现场"反例。
+讲给我听，我按你的反例质量判断是否通过。</p>
+<p><strong>一手源：</strong>AGENTS.md 原文通读三遍——第一遍找规则，第二遍找"为什么"，第三遍找你自己 agent 需要抄的条款。</p>
+
+<footer class="nav">
+  <a href="0006-l02-first-message.html">← L02</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0008-l04-soul-stack.html">L04 SOUL 与四层栈</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 规则②「先到项目根」防的是哪类事故？",
+  opts: ["相对路径在错误目录全部失配", "模型忘记先查找已有技能", "付费接口被意外调用"],
+  answer: 0,
+  why: "SKILL 里的 skills/... 都是根相对路径，且脚本不支持 --cwd；CWD 错一步全盘错。"
+});
+Quiz.render("q2", {
+  q: "2. 「配置检查」节防的是模型的哪种错误？",
+  opts: ["把感知局限当成世界事实", "忘记输出 JSON 格式", "调用太贵的付费接口"],
+  answer: 0,
+  why: "printenv 看不到≠没配置——定向防御模型的错误推理链。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

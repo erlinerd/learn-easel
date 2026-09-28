@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L11 · 会话工程</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M4 驱动层 · L11</div>
+  <h1>会话工程：跨天不丢历史、损坏能自愈</h1>
+  <p class="src">45 min · uuid5 钉 transcript + session_heal.py(182行) + 事件重放 · M4 毕业课</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L10」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>会话持久化的三个坑——<strong>绑定过期、传输劈叉、历史损坏</strong>——
+  Easel 各给了一个确定性补丁。这三个坑你自建 agent 时全会遇到。
+</div>
+
+<h2>一、基础：会话持久化要解决什么</h2>
+<p>先明确"会话"的物理形态：一次对话的全部历史（你说的、模型答的、工具结果）存在
+OpenClaw 的 transcript 文件里（jsonl：每行一个 JSON 对象的文本格式，可无限追加——这也是 A3 铁律②的物理基础）。"会话工程"的问题是：
+<strong>怎么保证第 N 轮的请求，能准确接上第 N-1 轮的文件</strong>——跨天、跨设备、跨进程重启。
+这本质是个<strong>键值问题</strong>：用户手里的会话标识（session key，如 <code>web-0928-1830</code>）
+怎么稳定映射到磁盘上的 transcript 文件。三个坑都是这个映射在某些条件下会漂移或断裂。</p>
+
+<h2>二、坑① 绑定过期 → uuid5 确定性 ID</h2>
+<p><strong>症状</strong>：两天后回来继续聊，agent 完全失忆——新起了一个空会话。<br>
+<strong>根因</strong>（:1803 注释原文大意）：OpenClaw 靠 <code>--session-key</code> 解析 transcript，
+但 key→文件的绑定（threadBindings）<strong>空闲超过约 24h 会过期</strong>，过期后同一个 key
+被解析成新 transcript。且 HTTP 路径的端点<strong>不读</strong> x-openclaw-session-id 头——
+客户端钉了 ID 也没用。<br>
+<strong>补丁</strong>：<code>_openclaw_session_id(sk) = uuid5(命名空间, sk)</code>。
+uuid5 是<strong>确定性</strong>的 UUID——同一个输入永远算出同一个值（区别于 uuid4 的随机）。
+把它随每个请求显式传给 gateway，transcript 路径从此只由数学决定，不依赖任何会过期的绑定表。
+<strong>用纯函数替代有状态映射</strong>——分布式系统的经典招（同款：JWT 自包含、内容寻址）。
+文件名即身份，身份不再需要"记住"。</p>
+
+<h2>三、坑② 传输劈叉 → 钉子文件</h2>
+<p><strong>症状</strong>：同一个会话，有时回答得出来历史，有时完全失忆，随机出现。<br>
+<strong>根因</strong>：HTTP 路径和 CLI 路径<strong>写不同的会话文件</strong>（:2117-2119 注释：
+只带 session-key 的话网关会自己另起 transcript）。如果第一轮走了 HTTP、第二轮回退到 CLI
+（A13 的回退链！），两轮就写进了两个文件——对话历史劈成两半。<br>
+<strong>补丁</strong>：<code>outputs/_sessions/&lt;sk&gt;.transport</code> 钉子文件——第一轮选定路径时写入，
+之后每轮<strong>先读钉子再行动</strong>：钉子说 http 就必须走 http（哪怕 CLI 更快）。
+这是 A13 回退纪律的完整版：<strong>回退只发生在新会话，绝不在会话中途</strong>。
+一致性 &gt; 可用性，在会话这个场景是铁律。</p>
+
+<h2>四、坑③ 历史损坏 → session_heal.py 自愈</h2>
+<p><strong>症状</strong>：会话文件还在，但一续聊就 400 "Invalid signature"，会话永久打不开。<br>
+<strong>根因链</strong>（docstring 写得很清楚）：OpenClaw 存 Claude thinking 块时丢失 signature →
+Bedrock 类网关回放历史时校验签名失败 → 400。也就是说：存的时候丢了一样东西，
+读的时候严格校验，<strong>上游 bug 在下游爆雷</strong>。<br>
+<strong>补丁</strong>：每轮 spawn 前跑 heal——删掉<strong>无签名 thinking 块</strong>和空消息。
+四个工程品质值得学：<strong>幂等</strong>（跑一遍跑十遍结果一样，可安全重复执行）、
+<strong>原子写</strong>（写临时文件再 rename，不产生半修复状态）、<strong>可选备份</strong>（修前留底）、
+<strong>带 selftest</strong>（验证"删的是该删的"——好 thinking 块必须毫发无损）。<br>
+哲学："上游 bug 无法改，就在下游门口修"——理想主义是修上游，现实主义是门口装过滤器，
+并留 issue 链路让上游终有一天修好。</p>
+
+<h2>五、三坑合观：一张决策表</h2>
+<table>
+  <tr><th>坑</th><th>失效条件</th><th>补丁</th><th>可迁移模式</th></tr>
+  <tr><td>绑定过期</td><td>空闲 &gt;24h</td><td>uuid5 确定性 ID</td><td>纯函数替代有状态映射</td></tr>
+  <tr><td>传输劈叉</td><td>会话中途换路径</td><td>钉子文件</td><td>首次决策持久化</td></tr>
+  <tr><td>历史损坏</td><td>上游存坏 + 下游严校</td><td>启动前 heal</td><td>幂等修复 + 门卫模式</td></tr>
+</table>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：信任平台的会话绑定。</strong>"平台肯定帮我管好"——24h 过期这种条件不读源码/issue
+根本不知道。<strong>坑 2：修复脚本无备份直改。</strong>heal 删错了内容，会话从"打不开"变"内容缺失"。
+<strong>坑 3：回退只测新鲜会话。</strong>A13 的回退链在"会话中途触发"时才是真考验。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>设计题：为你的 agent 设计断线恢复方案，必须覆盖——用户 20 分钟后回来怎么接着看？
+换台机器怎么续聊？历史文件损坏怎么办？讲给我听。通过即 M4 毕业，进入 M5 执行层。</p>
+<p><strong>一手源：</strong><code>scripts/session_heal.py</code> 全文（182 行，含 selftest——看它怎么验证"删的是该删的"）。</p>
+
+<footer class="nav">
+  <a href="0014-l10-streaming.html">← L10</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0016-l12-publish-engine.html">L12 发布引擎总览</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. uuid5 钉 transcript 解决的是哪个坑？",
+  opts: ["空闲后绑定过期丢历史", "thinking 块丢失签名损坏", "多个进程并发写会话"],
+  answer: 0,
+  why: "确定性 ID 让同一 session key 永远映射同一 transcript 文件，跨天续聊不断。"
+});
+Quiz.render("q2", {
+  q: "2. session_heal.py 删掉的是什么？",
+  opts: ["无签名的 thinking 块", "全部的历史消息记录", "超过一天的所有会话"],
+  answer: 0,
+  why: "根因是 thinking 块存盘丢 signature 导致回放 400；删掉无签名块即可自愈，幂等可重跑。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

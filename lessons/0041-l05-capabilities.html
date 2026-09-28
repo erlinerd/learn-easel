@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L5 · 能力与边界</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第一部分 LLM · L5</div>
+  <h1>能力与边界：三个来源决定模型能做什么</h1>
+  <p class="src">20 min · 知识截止、幻觉的机理、上下文学习、思维链、推理模型</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L4」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>模型的能力边界由三个来源决定——<strong>训练数据</strong>（知道什么，有截止日）、
+  <strong>训练方式</strong>（对齐带来的行为特征，包括幻觉倾向）、<strong>上下文</strong>（当场能"学"到什么）。
+  把每个边界配对一种工程对策，是 agent 设计者的基本功。
+</div>
+
+<h2>一、知识截止（cutoff）：模型是张"过期地图"</h2>
+<p>训练数据有个截止日期，之后的世界对模型不存在——问"最新版本是多少"它会<strong>自信地答一个过时答案</strong>，
+而不是说不知道。对策分两级：模型侧（provider 挂搜索工具，各家产品形态不同）、
+工程侧（你的 agent 自己挂检索工具——A2/A8 的内容）。判断标准依旧：
+<strong>这个信息在时间中会变吗？</strong>会变就必须走工具。</p>
+
+<h2>二、幻觉的机理：不是故障，是天性的副作用</h2>
+<p>L1 说过：模型在<strong>补全</strong>不在检索。三个来源放大幻觉：① 被迫回答（"不知道"没被训练奖励）；
+② 训练噪声里的错误关联；③ 你的提问方式暗示了不存在的答案（"他 2019 年获奖的原因是？"
+——前提是假的，模型也顺着编）。工程缓解清单：</p>
+<pre><code>允许说不知道：system 写"无法确认时明确说不确定，不要编造"（有效但非根治）
+给地面真值：把事实放进上下文（RAG/工具），让模型做"阅读理解"而非"回忆"
+降低诱导：问题不带假前提；让模型先复述/核查前提再回答
+验证外置：关键事实走代码校验（A11 结果级评测）</code></pre>
+<p>根治不存在——这是补全机的结构性质，所以 A12 的防御阶梯里"留痕对账"是最后一道。</p>
+
+<h2>三、上下文学习（ICL）：模型唯一的"当场学习"方式</h2>
+<p>权重冻结（L1），但模型能在<strong>上下文里当场适应</strong>：给几个示例，它就照着模式做——
+GPT-3 论文标题即 "Language Models are Few-Shot Learners"。关键认知：
+<strong>few-shot 是"当场模仿"不是"学会"</strong>——示例出了上下文就忘（所以每次调用都要带），
+且示例即分布：示例的格式、风格、甚至错误都会被模仿。给示例的纪律：
+<strong>覆盖边界情况</strong>（最短合法输出长什么样、遇到缺失字段怎么办），
+比给三个"完美案例"有效得多。</p>
+
+<h2>四、思维链（CoT）与推理模型</h2>
+<p><strong>CoT</strong>（Wei et al. 2022）：让模型"一步步想"再答，多步推理正确率显著提升——
+因为每步推理 token 给了模型更多计算空间。零成本版本是加一句"先分析再给结论"。
+<strong>推理模型</strong>（o 系/R1/带 thinking 的模型）把这个内化：RL 训练模型生成超长内部思考链，
+按 thinking token 计费。何时值得：<strong>多步推理、规划、数学、代码调试</strong>；
+何时浪费：<strong>分类、抽取、格式转换</strong>——thinking 烧十倍 token 换不回质量。
+Easel 的场景（文案、路由、流程执行）大多不需要重型推理，但发布决策、评分类任务受益。</p>
+
+<h2>五、能力不对称： tokenizer 留下的暗伤</h2>
+<p>模型的弱项往往不是"智力"而是<strong>表示</strong>（L2 伏笔回收）：字符级任务（数字母、反转字符串、
+精确字数）、大数算术、日期推算（"30 天后是周几"）——token 碎片化让这些对模型是"隔纱看物"。
+对策统一而简单：<strong>精确计算和计数一律代码化</strong>，模型只决定"算什么"。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：用"你是个诚实专家"治幻觉。</strong>角色设定提升语气不改变机制——缓解靠
+"允许说不知道 + 给地面真值 + 外置验证"三件套。</p>
+<p><strong>坑 2：few-shot 给三个相似完美案例。</strong>模型学到的是"输出都长这样"，
+遇到边界情况没有先例可模仿——示例要覆盖边界。</p>
+<p><strong>坑 3：所有任务都上推理模型。</strong>分类抽取用 reasoning 档，账单十倍质量持平——
+按任务选档，模型路由（A10 模式 2 的变体）本身就是优化点。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>给四个任务各配一种对策并说理由：① "昨天的股价"；② "把这段合同的关键条款抽成表格"；
+③ "这个 bug 可能出在哪"；④ "数一下用户名里有几个字母 a"。发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0040-l04-messages.html">← L4</a> · 下一课：<a href="0042-l06-prompting.html">L6 提示词工程</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. few-shot 示例的本质是什么？",
+  opts: ["上下文内的当场模仿", "写入权重的持久学习", "唤醒训练时的记忆"],
+  answer: 0,
+  why: "ICL 是当场适应：示例出了上下文就忘，且示例的错误也会被模仿。"
+});
+Quiz.render("q2", {
+  q: "2. 模型数不准字数的最根本原因是？",
+  opts: ["token 碎片化的表示", "数学能力天生较弱", "训练时没见过数字"],
+  answer: 0,
+  why: "它看到的是 token 不是字符——精确计数必须代码化。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

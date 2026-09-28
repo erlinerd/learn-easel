@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A5 · 上下文工程</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A5</div>
+  <h1>上下文工程：每一轮让模型看到什么</h1>
+  <p class="src">20 min · prompt 工程的升级版——管理的不是一段话，是整个信息流和 token 账单</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A4 工具设计」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>模型每轮看到的只是一串 token 序列，而这份序列要花真金白银、
+  有硬性预算。上下文工程就是管这份账的学问，四原则：<strong>预算有限、稳定前缀、渐进披露、蒸馏不搬运</strong>。
+</div>
+
+<h2>一、一张真实的 token 账单（工作示例）</h2>
+<p>假设你做一个有 30 个工具、10 轮历史的客服 agent，128K 窗口，每轮账单长这样：</p>
+<pre><code>system prompt（人格+规则）              800 token   常驻
+30 个工具的 schema                    4500 token   常驻 ← 大头！
+10 轮历史（含工具结果）              20000 token   随轮增长 ← 更大的头！
+本轮注入（用户信息/检索结果）         1500 token   可变
+─────────────────────────────────────────────
+合计 ≈ 26800 token / 每轮全价重算（若无缓存）</code></pre>
+<p>三个立刻能看出的动作点：工具太多该瘦身（A2 的按需加载）；历史要压缩（A6）；
+注入内容要蒸馏（本课第四节）。<strong>上下文工程的第一步永远是先记账</strong>——
+大多数"模型变笨了"的真相是窗口被垃圾挤满。</p>
+
+<h2>二、原则②稳定前缀：prompt cache 的钱在哪省</h2>
+<p>provider 按<strong>前缀匹配</strong>缓存：开头完全一致的部分命中缓存，价格约为原价的 1/10，
+且时延更低。推论：</p>
+<pre><code>✗ system = "你是助手。当前时间：14:32:05。用户ID：8817。"   # 每秒都变 → 缓存全废
+✓ system = "你是助手。"（稳定） + "当前时间：14:32:05。"（放在消息末尾的可变区）</code></pre>
+<p>OpenClaw 源码里有一行注释把这件事写成了军规："Approval UI and owner identity vary by turn,
+so keep both below the stable prefix"（system-prompt.ts:1146）——<strong>可变内容必须排在稳定边界之后</strong>。
+经典事故：往 system prompt 顶部塞时间戳/请求 ID/随机欢迎语，团队账单翻十倍还没人知道为什么。</p>
+
+<h2>三、原则③渐进披露：三级加载</h2>
+<table>
+  <tr><th>级</th><th>什么时候进上下文</th><th>Easel 实例</th></tr>
+  <tr><td>索引常驻</td><td>每轮都在</td><td>114 个技能的 frontmatter（name+description 一行）</td></tr>
+  <tr><td>触发加载</td><td>模型选定后才进</td><td>SKILL.md 正文（&lt;200 行）</td></tr>
+  <tr><td>执行中读取</td><td>跑流程时按需读，甚至不进 prompt</td><td>references/ 按引用读；scripts 永不进 prompt 只被执行</td></tr>
+</table>
+<p>这是把 L1 的"窗口稀缺"变成体系的设计——<strong>token 只为正在做的事付费</strong>。
+你自己做 agent 时最少要分出前两级：能力索引常驻，能力本体按需。</p>
+
+<h2>四、原则④蒸馏不搬运：指针思维</h2>
+<p>新手最常见的浪费：工具返回 3000 字原文直接进上下文、检索结果整段塞入、上游产物全文转发。
+蒸馏不搬运要求传<strong>摘要 + 指针</strong>：</p>
+<pre><code>✗ "以下是竞品分析全文：……（3000 字）"
+✓ "竞品分析已完成，结论：价格带 199-299 缺位（详见 outputs/竞品/analysis.md）"</code></pre>
+<p>模型需要细节时<strong>自己按指针去读</strong>——这就是 agentic 检索（A8）。
+Easel 的 manifest 是这个原则的制度化：跨层只传"产物路径 + 一句结论"，禁止整块转发（正课 L03）。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：system prompt 塞动态内容毁缓存</strong>（见上，账单级事故）。</p>
+<p><strong>坑 2：历史无限增长。</strong>没有压缩机制的长会话，第 20 轮起每轮都为前 19 轮全价买单，
+且窗口溢出直接报错。压缩策略要在第一天就设计（A6）。</p>
+<p><strong>坑 3：什么都进 system。</strong>只有"每一轮都需要的规则"才配常驻；
+偶尔需要的知识放检索，特定任务需要的放技能正文。判断标准：<strong>这条信息被用到的频率</strong>。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>为一个"代码评审 agent"做上下文工程，交三样东西：
+① token 账单（system ≤500、工具索引、历史策略、本轮注入各多少预算）；
+② 哪些内容必须排在稳定前缀、哪些放可变区；
+③ 检索到 3000 字的相关代码时，进上下文的应该是什么。
+发到对话里我批改。</p>
+<p><strong>一手源：</strong><a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Anthropic · Effective context engineering for AI agents</a>。</p>
+
+<footer class="nav">
+  <a href="0048-tool-design.html">← A4 工具设计</a> · 下一课：<a href="0029-c05-memory.html">A6 记忆</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. prompt cache 命中的条件是什么？",
+  opts: ["前缀完全一致", "语义大致相近即可", "只要用了同一个模型"],
+  answer: 0,
+  why: "按前缀逐 token 匹配——开头一个字不同，后面缓存全部作废。"
+});
+Quiz.render("q2", {
+  q: "2. 「渐进披露」在 Easel 里的实例是？",
+  opts: ["技能三层加载机制", "发布前 dry-run 确认", "登录态存用户家目录"],
+  answer: 0,
+  why: "frontmatter 常驻做路由、SKILL.md 触发才加载、references 执行中读——按需披露的标准实现。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

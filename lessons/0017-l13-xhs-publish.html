@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L13 · xhs_publish.py 精读</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M5 执行层 · L13</div>
+  <h1>xhs_publish.py 精读：发布"假成功"是怎么被消灭的</h1>
+  <p class="src">45 min · 精读 skills/shared/scripts/xhs_publish.py 的骨架（47KB，抓主线不通读）</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L12」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>发布脚本的核心难题是<strong>假成功</strong>——界面 toast 弹了、按钮变灰了，
+但内容根本没发出去。这个脚本用"dry-run 默认 + 显式 --exec + 成功校验"三段式把假成功概率压到接近零。
+</div>
+
+<h2>一、基础：发布脚本难在哪（三个敌人）</h2>
+<p>写一个"发帖脚本"听起来是填表单点按钮的事，真正的难点有三个：</p>
+<p><strong>敌人 1：界面在骗你。</strong>网页是为<strong>人</strong>设计的：toast 弹"发布成功"、
+按钮变灰——这些是前端表现，不是后端事实。内容可能被风控悄悄拦截、可能上传失败，
+界面照样给你看"成功"。<strong>假成功</strong>是发布脚本的头号敌人——用户以为发了，
+三天后发现根本没发出去。</p>
+<p><strong>敌人 2：平台在改版。</strong>脚本靠 CSS 选择器找按钮（A16），平台前端一改版，
+选择器全灭。这是选择器治理问题。</p>
+<p><strong>敌人 3：平台在防御。</strong>自动化操作有指纹有节奏（A16），风控可能限流、弹验证码、
+甚至封号。这是对抗问题。</p>
+<p>这个脚本的三段式设计分别对付这三个敌人——先看骨架，再逐段拆。</p>
+
+<h2>二、先看骨架（grep 子命令）</h2>
+<pre><code>check    # 环境自检（登录态、依赖）        ← 敌人预防：先确认能打
+login    # 抠二维码 PNG 到 outputs/_login/   ← 状态机（L12）
+plan     # dry-run：列出标题/正文/媒体清单给用户确认   ← 三段式之一
+publish  # 默认仍演练；--exec 才真发          ← 三段式之二 + 之三</code></pre>
+
+<h2>三、三段式逐段拆</h2>
+<p><strong>段 1：dry-run 默认（对付"手滑"）。</strong>没有任何一次发布是"脚本自己决定的"——
+plan 子命令把将要发布的内容（标题/正文/媒体清单）完整列出来给用户过目，
+publish 不带 --exec 时同样只演练。设计原理（A12 阶梯第 3 级）：<strong>不可逆操作必须显式授权</strong>。
+"默认不做 + 显式才做"和"默认做了 + 出事再撤"是两种世界观——后者在不可逆场景必死，
+因为发布没法撤。</p>
+<p><strong>段 2：成功校验 = URL 离开 /publish/publish（对付敌人 1）。</strong>
+不看 toast、不看按钮——只信 URL 跳转。为什么 URL 更可信？toast 和按钮是<strong>前端 JS 画的</strong>，
+URL 变化反映<strong>路由层的真实跳转</strong>——平台发布成功后必然跳离发布页，
+这个信号难以伪造。（最强的校验是 L14 的回平台对账；URL 校验是它的轻量前置。）</p>
+<p><strong>段 3：选择器单点 + 来源标注（对付敌人 2）。</strong>
+所有 CSS 选择器在文件顶部一个 SELECTORS 字典里，<strong>每条标注参考来源</strong>
+（移植自开源 xiaohongshu-mcp 的 go-rod 选择器）。平台改版只改一处，code review 一眼看到动了什么。
+顺带的细节：<code>calc_title_length</code>（:95）按 UTF-16 码元复刻小红书的 20 字上限口径
+（emoji 在 UTF-16 占 2 个码元）——<strong>用平台的尺子量内容</strong>，
+而不是用 Python 的 len（那会把 emoji 数成 1）。</p>
+
+<h2>四、敌人 3 的应对：IP 风控显式处理（:684-707 原文）</h2>
+<pre><code>login_state.write_status(sf, "error", "IP 存在风险，需干净网络/代理")
+_die("小红书判定当前网络为风险 IP（安全限制 300012「IP存在风险…」）——"
+     "二维码在此环境无法弹出。解决：①用干净/家宽 IP 的代理 --proxy socks5://...；"
+     "②在正常网络的机器上 login 拿到登录态，再把持久化目录 ... 拷到本机复用。", 4)</code></pre>
+<p>读这段的关键是<strong>不做什么</strong>：不盲目重试（重试会加重风控判定），
+不静默失败（用户要知道是 IP 问题不是玄学），给两条明确出路
+（换干净 IP / 在好网络登录后拷贝登录态目录——登录态可迁移，A16）。
+另外无头被拦时自动降级开 CloakBrowser 有头窗口（:135）——有头浏览器指纹更接近真人。</p>
+
+<h2>五、反检测的克制（复习 + 深化）</h2>
+<p>只做两件温和的事：<code>--disable-blink-features=AutomationControlled</code>（:83，去掉自动化指纹）
++ 逐字符输入模拟真人打字。<strong>刻意不做</strong>大段 JS 注入伪装——AGENTS.md 明说
+"避免可被检测的大段 JS 注入"：越激进的伪装特征越多。这是"活着比聪明重要"的工程判断。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：加新平台时复制选择器逻辑而不是用注册表。</strong>散落的选择器死得快（L12 引擎+注册表）。
+<strong>坑 2：成功校验只看一步。</strong>URL 校验通过也别跳过 publish-log 留痕——事后对账需要起点数据。
+<strong>坑 3：用 len() 数标题字数。</strong>emoji 计数口径和平台不一致，20 字限制会被判超。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>说清三段式各自消灭什么失败模式：dry-run 消灭什么？--exec 消灭什么？URL 校验消灭什么？
+追问准备：为什么选择器要标注来源？</p>
+<p><strong>一手源：</strong>xhs_publish.py 顶部 SELECTORS 字典 + publish 子命令的成功校验段。</p>
+
+<footer class="nav">
+  <a href="0016-l12-publish-engine.html">← L12</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0018-l14-guards.html">L14 fail-closed 与对账</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 发布成功的判定依据是什么？",
+  opts: ["URL 离开发布页", "界面出现成功提示", "上传按钮重新可点"],
+  answer: 0,
+  why: "toast 和按钮状态都可能骗人；URL 跳转是这条证据链里最难伪造的信号。"
+});
+Quiz.render("q2", {
+  q: "2. dry-run 默认 + --exec 显式，对付的失败模式是？",
+  opts: ["未经确认的意外发布", "平台风控拦截账号", "选择器失效找不到按钮"],
+  answer: 0,
+  why: "不可逆操作必须显式授权——'默认不做'消灭手滑和模型自作主张。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

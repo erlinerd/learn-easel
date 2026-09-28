@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A6 · 记忆：agent 怎么记住过去</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A6</div>
+  <h1>记忆：短期靠窗口，长期靠工程</h1>
+  <p class="src">20 min · 四种实现形态、写入/清洗策略、一个最容易翻车的维度：作用域</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A5 上下文工程」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>记忆分两层——<strong>短期 = 上下文窗口</strong>（塞不下就压缩），
+  <strong>长期 = 窗口外的存储 + 每轮检索回来</strong>。而长期记忆最重要的设计不是"怎么存"，
+  是<strong>"作用域多大"、"什么才值得沉淀"、"怎么清洗"</strong>。
+</div>
+
+<h2>一、基础：记忆问题的本质（回到底层）</h2>
+<p>L1 讲过：模型<strong>无状态</strong>，权重冻结。"记忆"在 agent 里完全是工程的造物——
+本质就一句话：<strong>把过去的什么信息，以什么形式，重新放进现在的上下文</strong>。
+拆开是三个决策：存什么（写入策略）、放在哪（存储形态）、怎么取回（检索策略）。
+新手只想着第三个，前两个才是事故高发区。</p>
+
+<h2>二、四种实现形态（各配失败模式）</h2>
+<table>
+  <tr><th>形态</th><th>怎么做</th><th>失败模式</th></tr>
+  <tr><td><strong>窗口内</strong></td><td>历史 messages 每轮全量重发（L4 模式一）</td><td>撑爆窗口；长对话必死</td></tr>
+  <tr><td><strong>压缩</strong></td><td>窗口快满时 LLM 生成摘要替换旧史</td><td>摘要丢细节——关键约束被压没</td></tr>
+  <tr><td><strong>文件</strong></td><td>写 markdown，每轮读回</td><td>什么都记 → 流水账淹没有效信息</td></tr>
+  <tr><td><strong>检索</strong></td><td>向量化 + 相似度召回（A8）</td><td>召回不到=忘了；专有名词检索烂</td></tr>
+</table>
+<p><strong>压缩的工作原理</strong>（OpenClaw 的做法，正课 L18 逐行看）：窗口超阈值时，
+让 LLM 把旧史生成结构化摘要 → 摘要作为<strong>追加条目</strong>进历史（原文不删！只是后续轮不再重发）
+→ 保留最近 20000 token 的原文 → 继续跑。要点：<strong>最近的消息保原文，远的保摘要</strong>——
+当前任务通常依赖近期细节。</p>
+<p><strong>文件是最被低估的形态</strong>：人类可读可编辑、git 可版本化、模型读得懂、无召回风险。
+Easel 的账号长期记忆就是六个 markdown 文件，没有数据库。选择树：<strong>语料小（几十 KB 内）
+且结构清晰 → 文件；海量无结构 → 检索</strong>（A8 的决策树）。</p>
+
+<h2>三、写入策略：什么才值得沉淀（最易被忽略）</h2>
+<p>长期记忆的崩溃往往不是技术故障，是<strong>垃圾进垃圾出</strong>。看 Easel AGENTS.md 的沉淀标准
+（正课 L03 逐条精读）——只有<strong>真正可复用</strong>的偏好、红线、方法、归因才沉淀，且要用户确认：</p>
+<pre><code>值得沉淀：用户明确偏好/禁区；反复认可的封面/开场/配音方法；
+          发布后验证有效或失效的选题结构
+不沉淀：  一次性规格、临时参数、流水账、Key/token/路径</code></pre>
+<p>判据一句话：<strong>沉淀"会改变未来决策的事实"，不沉淀"只属于这次任务的细节"</strong>。
+写入方式是<strong>增量合并</strong>（去重、不覆盖无关内容），不是整文件重写——
+记忆文件也要 append-only 精神（A3 铁律②的延伸）。写入时机上，Easel 要求"任务结束时询问用户
+同意后才写"——记忆写入本身是个需要授权的动作（写错人设比不写更糟）。</p>
+
+<h2>四、清洗策略：记忆也要新陈代谢</h2>
+<p>只写不清的记忆三个月后必然腐化：过时的"用户偏好 XX 工具"还占着位置，
+新偏好被旧偏好稀释。两个机制：<strong>① 定期审计</strong>——让模型通读记忆文件并逐条标注
+"仍被近期行为支持 / 已过时 / 相互矛盾"，人工确认后清理；<strong>② 冲突处理规则</strong>——
+新偏好与旧偏好冲突时，<strong>新胜旧</strong>且保留冲突痕迹（"3 月曾说偏好 A，7 月改为 B"——
+历史比干净更有信息量）。Easel 的做法是沉淀时"去重合并，不覆盖无关内容"
+（skill-profile-manager），把清洗留给显式动作而不是静默覆盖。</p>
+
+<h2>五、作用域：全局记忆是陷阱（推演一遍）</h2>
+<p>设两个并行会话：A 绑美食账号画像，B 绑科技账号画像，共享一份全局记忆文件。</p>
+<pre><code>t1  A 轮结束：沉淀"受众爱看探店"    → 写入全局记忆
+t2  B 开始新任务：读全局记忆        → 看到"受众爱看探店"
+t3  B 给科技号写探店文案            → 串味，且用户无法定位原因</code></pre>
+<p>Easel 的答案：记忆按<strong>画像分域</strong>，每个会话只绑自己的 memory.md，
+全局 MEMORY.md 刻意留空禁读写（正课 L05 看 persona.py 的三句话前缀怎么声明作用域）。
+一般化原则：<strong>记忆作用域 ≥ 需要它的决策范围，绝不超过</strong>。个人助理=单人一份；
+多租户=每租户一份；多角色=每角色一份。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：什么都记。</strong>每轮对话都总结写文件——一周后记忆几万字，噪声淹没信号。
+<strong>价值密度比数量重要一百倍</strong>。<br>
+<strong>坑 2：记忆只写不清洗。</strong>过时偏好永不下岗——要定期审计 + 新旧冲突规则。<br>
+<strong>坑 3：向量化一切。</strong>六份画像文件也建向量库——引入召回失败风险去解决不存在的问题。语料小就整读。<br>
+<strong>坑 4：写入不授权。</strong>静默记用户的"偏好"记错了，用户连哪里出错都找不到——写入要可见可拒。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>为"个人助理 agent"设计记忆方案，必须回答五问：① 什么进窗口、什么写文件、什么建索引？
+② 什么才触发沉淀（给出你的判据）？③ 作用域怎么划？④ 清洗机制怎么设计？
+⑤ 跨设备同步时哪种形态最先出问题？发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0032-c08-context-engineering.html">← A5 上下文工程</a> · 下一课：<a href="0033-c09-structured-output.html">A7 结构化输出</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. compaction 属于哪一层记忆的处理？",
+  opts: ["短期记忆的压缩", "长期记忆的检索", "跨会话的记忆共享"],
+  answer: 0,
+  why: "窗口快满时摘要替换旧史，是短期记忆（上下文）的管理手段，不是长期存储。"
+});
+Quiz.render("q2", {
+  q: "2. 多账号 agent 的长期记忆为什么必须分域？",
+  opts: ["防止会话间串味", "提高向量检索速度", "减少 API 的调用费用"],
+  answer: 0,
+  why: "全局共享时 A 域经验会污染 B 域输出，且难以排查；分域后每会话只读自己的记忆。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L04 · SOUL.md 与四层栈设计</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M2 大脑层 · L04</div>
+  <h1>SOUL.md 与四层提示词栈：常驻层为什么必须短</h1>
+  <p class="src">45 min · 精读 SOUL.md(31行) + docs/prompt-stack.md</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L03」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>提示词栈的每一层都遵循一个铁律——<strong>常驻的越少越好，按需的越多越好</strong>。
+  SOUL.md 里每一处"刻意不写"都是把 token 和时效性让给正确的层。
+</div>
+
+<h2>一、基础：人格层为什么存在（而不只是规则层）</h2>
+<p>一个自然的疑问：AGENTS.md 已经有六条规则了，为什么还要一份 SOUL.md？
+因为<strong>规则管不了规则没写到的事</strong>。规则是枚举："不要泄露密钥"——但模型每天面对
+无数规则没枚举的情境（用户让它写一篇"介绍我的 AI 助手"的文案，要不要提工具名？）。
+人格的作用是<strong>提供默认倾向</strong>：SOUL 里一句"对外文案绝不暴露任何工具或配置痕迹……
+你是创作者的搭子，不是在给系统打广告"，让模型在规则未覆盖的情境里也有正确的直觉。
+这对应 L5 的能力认知：模型是<strong>模式补全机</strong>——人格就是给它植入一组默认模式，
+比枚举所有情况便宜得多。</p>
+
+<h2>二、四层栈回顾 + 每层的"不许越界"</h2>
+<table>
+  <tr><th>层</th><th>写什么</th><th>刻意不写什么（本课考点）</th></tr>
+  <tr><td><strong>SOUL.md</strong> 人格</td><td>搭子语气、能力总览（类目级）、沟通风格</td><td>① 不写具体 skill 名——会过时（weibo 教训）；② 不写"去调某某 skill"的操作机制——那是 AGENTS 的事</td></tr>
+  <tr><td><strong>AGENTS.md</strong> 规则</td><td>六条规则、五层分工、编排、边界</td><td>不承载人格语气；规则不带情绪</td></tr>
+  <tr><td><strong>CONTEXT.md</strong> 路径</td><td>sync.sh 自动生成的项目绝对路径</td><td>手工不编辑——换机器重跑 sync 即新</td></tr>
+  <tr><td><strong>SKILL</strong> 按需</td><td>流程、约束、边界（&lt;200 行）</td><td>不常驻；不用的不加载</td></tr>
+</table>
+<p>"不越界"不是洁癖。每层的内容有不同的<strong>变化频率</strong>：人格（年级别稳定）→ 规则
+（月级别）→ 路径（机器级别）→ 技能（周级别）。变化快的进常驻 = 缓存全废（L2 复利账单 +
+A5 稳定前缀）；写错层 = 维护时找不着北。<strong>分层 = 按变化频率和加载时机切分职责</strong>。</p>
+
+<h2>三、SOUL.md 逐句精读（31 行里的关键句）</h2>
+<p><strong>"先想怎么帮他做成，而不是'这个我做不了'"（:16）</strong>——人格层的总纲。
+这不是鸡汤：执行型 agent 最常见的失效模式是模型<strong>诉苦式拒答</strong>（"作为 AI 我无法……"）。
+这句把默认倾向扭向"想办法"。</p>
+<p><strong>"先去技能库找对应的 SKILL 照着用，别凭记忆裸做；……（具体规则见 AGENTS。）"（:18）</strong>——
+最值得学的一句：<strong>人格层只给动机，机制细节显式指路给 AGENTS</strong>。
+括号里那句"见 AGENTS"就是层间边界的活例子——SOUL 不复述 AGENTS 的路由规则，
+避免同一条规则写两处（两处必漂移，L03 的单一真相源精神）。</p>
+<p><strong>"问到'我的账号/我的帖子/我的粉丝/最近发了啥'这类，先去查已登录账号和站内数据，
+别回头问他要账号名。"（:21）</strong>——等等，这不是和 AGENTS 规则④"查现有信息再提问"重复了吗？
+不是重复，是<strong>场景化重申</strong>：规则④是抽象原则，这句是最高频场景的直给。
+prompt 工程里关键规则"一次抽象 + 一次具体"是合理冗余——模型对具体例子的命中率远高于抽象原则（L5 ICL）。</p>
+<p><strong>"发出去的东西只谈内容本身：对外文案/评论绝不暴露任何工具或配置痕迹……"（:30）</strong>——
+人格化表达的安全规则，与 content_guard（L14）形成两层：闸门是确定性硬拦（密钥/内网），
+人格是概率性直觉（"不要给系统打广告"的自曝倾向）。两层缺一不可——闸门管枚举的，人格管没枚举的。</p>
+
+<h2>四、常驻层短的第二个理由：prompt cache（数字版）</h2>
+<p>L2/A5 讲过原理，这里算一笔 Easel 的实际账：SOUL 31 行 + AGENTS 111 行 + CONTEXT
+≈ 常驻 4–5K token。如果命中缓存，这部分每轮成本约 1/10；如果每次内容有变（比如把
+"当前热门话题"写进 SOUL），<strong>每轮全价 + 前缀重建</strong>。OpenClaw 源码把这件事写成了
+军规级注释（system-prompt.ts:1146）："Approval UI and owner identity vary by turn,
+so keep both below the stable prefix"——可变内容必须排在稳定边界之后（正课 L16 站 4 会读到）。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：人格层写成能力清单。</strong>列 50 个技能名——必过时（weibo 教训：技能改名后
+人格层还在教模型调旧名）。保持类目级："做视频（AI 生成、剪辑、切片……）"这样按能力类写。<br>
+<strong>坑 2：两层写同一规则。</strong>AGENTS 写了路由规则，SOUL 再详细抄一遍——漂移隐患；
+正确姿势是 SOUL 给动机 + 指路。<br>
+<strong>坑 3：把 SOUL 当 system prompt 垃圾场。</strong>临时需求、活动公告全塞进去——
+常驻层只放"每一轮都成立"的东西，这是 A5 的判断标准。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>指出 SOUL.md 三处"刻意不写"，并说明每处的下放去向（写到哪一层/哪个机制）。
+拓展题：如果你的 agent 人格层写了具体技能名，三个月后会出什么事？</p>
+<p><strong>一手源：</strong><code>openclaw/workspace/SOUL.md</code> + <code>docs/prompt-stack.md</code>（19 行，设计原则全在里面）。</p>
+
+<footer class="nav">
+  <a href="0007-l03-agents-md.html">← L03</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0009-l05-persona-injection.html">L05 画像注入机制</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. SOUL.md 为什么不写具体技能名？",
+  opts: ["技能会增删改名导致过时", "技能名太长浪费存储", "模型自己能猜到技能"],
+  answer: 0,
+  why: "能力总览保持类目级，具体名走 frontmatter 路由——上游注释明说这是 weibo 过时的教训。"
+});
+Quiz.render("q2", {
+  q: "2. 系统提示词里可变内容为什么要排在稳定前缀之后？",
+  opts: ["让 provider 的缓存命中", "方便人类阅读和审查", "模型喜欢先看变化内容"],
+  answer: 0,
+  why: "prompt cache 按前缀匹配；每轮变化的内容若插在前面，整个前缀缓存全部失效。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

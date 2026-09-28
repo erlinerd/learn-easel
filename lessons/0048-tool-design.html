@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A4 · 工具设计基础</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A4</div>
+  <h1>工具设计基础：模型用你给的感官认识世界</h1>
+  <p class="src">20 min · 粒度、参数、返回值、幂等、错误消息——五个设计面</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A3 循环」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>模型通过工具认识世界、通过工具改变世界——<strong>工具设计决定
+  agent 的能力上限</strong>，常常比换更强的模型影响更大。五个设计面：粒度、参数、返回值、
+  幂等、错误消息。检验标准一句话：<strong>模型一次就能用对，失败一次就能自我修复</strong>。
+</div>
+
+<h2>一、基础：为什么工具设计是独立的学问</h2>
+<p>L7 讲了 function calling 的协议，A3 讲了 loop 怎么执行工具——但"协议正确"不等于"工具好用"。
+关键认知：<strong>schema 是模型的感官</strong>。模型没见过你的文件系统、你的数据库、你的平台——
+它对世界的一切认知来自你写的工具定义（L7 那段 JSON）。工具描述含糊，世界在模型眼里就是糊的；
+参数设计混乱，模型的每次调用都是抽奖。</p>
+<p>很多"模型太笨"的案例，真相是<strong>工具设计烂</strong>：模型选错工具（描述重叠，A2 坑 1）、
+传错参数（schema 边界没写清）、拿到结果不会用（返回值没为模型优化）。这三类"笨"都治不了
+——换再强的模型也白搭——但都能靠重新设计工具治好。<strong>工具设计是性价比最高的优化点</strong>：
+改一段 JSON 描述的成本，远低于换模型、微调、或者写更长的 prompt。</p>
+
+<h2>二、粒度：一个动作，还是一套流程？</h2>
+<p>工具设计的第一个决策是切多粗。<strong>太细</strong>：把流程拆成 <code>read_line</code>、
+<code>write_char</code>、<code>click_at(x,y)</code>——完成一步要串十次调用，每次调用都是一次
+模型决策（可能错）+ 一份工具定义（常驻 token，A5）。<strong>太粗</strong>：
+<code>do_everything(task)</code>——黑盒不可组合，中间状态不可见，出错无法定位在哪一步。</p>
+<p>判据一句话：<strong>这个动作会被单独想要吗？</strong>会，就是一个工具的粒度。
+看 Easel 的两极：<code>wordcount.py count</code> 是单一纯动作（数一段文字的字数）——
+独立意图成立，独立成工具；<code>xhs_publish.py</code> 的 publish 是复合动作
+（上传→填表→提交→校验）——但它作为"发布这篇内容"这一个意图封装成一条命令，
+内部的 check/login/plan/publish 再分子命令。<strong>对模型的接口是一条命令，
+内部的复杂度藏在参数和子命令里。</strong></p>
+
+<h2>三、参数设计：schema 是给模型的 UI</h2>
+<p>把 schema 想成模型的表单界面——你在给一个"聪明但对你系统零上下文"的新同事写表单：</p>
+<pre><code>{
+  "name": "create_note",
+  "description": "创建小红书笔记草稿。返回草稿 id。",
+  "parameters": {
+    "title":   {"type": "string", "description": "标题，≤20 字（按 UTF-16 码元计，emoji 占 2）"},
+    "content": {"type": "string", "description": "正文，≤1000 字，支持换行"},
+    "tags":    {"type": "array",  "description": "话题标签，3-5 个，不带 # 号",
+                "items": {"type": "string"}},
+    "is_draft":{"type": "boolean", "description": "仅存草稿不发布。默认 true"}
+  },
+  "required": ["title", "content"]          // ← required 最小化：能默认的都默认
+}</code></pre>
+<p>四条纪律：<strong>① 参数名自解释</strong>（<code>path</code> 不是 <code>p</code>——名字本身要教学）；
+<strong>② description 写清单位/格式/边界</strong>（"≤20 字、UTF-16 口径"比"标题"有用一万倍——
+L2 讲过模型数不清字数，你替它把口径定死）；<strong>③ required 最小化</strong>（可选参数给默认值，
+模型的决策负担越小命中率越高）；<strong>④ 枚举优先于自由字符串</strong>（L14 四档结论的思想
+前移到参数端：<code>"priority": {"enum": ["high","normal","low"]}</code> 比让模型自由发挥稳得多）。</p>
+
+<h2>四、返回值设计：为模型优化，不为人类</h2>
+<p>工具返回给谁看？<strong>给模型看，不是给人看</strong>。人的偏好是漂亮的表格，模型需要的是
+可决策的信息。三条：</p>
+<p><strong>① 截断 + 摘要 + 指针</strong>：读 50KB 日志，返回前 4000 字 + "全文 50KB 已存
+/tmp/log.txt，可用 offset 参数分段读取"——信息不丢，窗口不爆（L2/A5）。<br>
+<strong>② 结构化 + isError</strong>：结果分字段（status/data/error），失败显式标 isError（A3 铁律①）。<br>
+<strong>③ 成功也要带证据</strong>：最强范式是 Easel 的 readback——发布成功不只返回 "ok"，
+返回 <code>{"status": "verified", "work_id": "xxx", "url": "..."}</code>——
+模型能向用户转述<strong>证据</strong>而不是自我报告（A15 信任校准的素材就从这来）。</p>
+
+<h2>五、幂等与副作用标注</h2>
+<p><strong>读操作天然幂等</strong>（调十次无害），随便重试；<strong>写操作要么设计成可重试</strong>
+（"创建草稿"带 idempotency 语义：同参数二次调用返回已有草稿而非新建）、<strong>要么显式声明不可重试</strong>
+（"发布"——工具描述里写明"调用前请确认内容"，配合 A13 的对账）。另外长耗时操作标注
+<code>async: true</code>——这是 L17 流中提前执行的触发条件，标注与否直接影响 loop 的并行策略。</p>
+
+<h2>六、错误消息：写给模型看的错误</h2>
+<p>工具失败后，错误字符串是模型唯一的诊断依据。<strong>错误质量决定自我修复速度</strong>：</p>
+<pre><code>✗ "Error"                              ← 模型只能瞎猜重试
+✗ "FileNotFoundError"                  ← 知道类型不知道细节
+✓ "FileNotFoundError: notes.md（当前目录是 /app；目录下有 notes.txt，是否想读它？）"
+                                        ← 状态 + 原因 + 下一步建议</code></pre>
+<p>第三种写法的三要素——<strong>当前状态</strong>（在哪个目录）、<strong>失败原因</strong>（文件不存在）、
+<strong>可行动建议</strong>（有个相近文件）——让模型一次修复，而不是三轮试错。
+这是 A3 铁律①（失败是消息）在工具设计端的落地：消息的质量决定铁律的价值。</p>
+
+<h2>七、常见踩坑</h2>
+<p><strong>坑 1：为一个流程造十个碎工具。</strong>细粒度的灵活性的代价是路由负担和常驻 token——
+先问"会被单独想要吗"。<strong>坑 2：返回值不截断。</strong>一次大返回把窗口吃掉，
+后续轮次全在贫血上下文里工作（L2 复利）。<strong>坑 3：错误消息只给代码不给上下文。</strong>
+"出错了"让模型的自我修复退化为抛硬币。</p>
+
+<h2>八、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>九、出口检验</h2>
+<p>为"待办事项管理 agent"设计 3 个工具，每个给出：名称、粒度理由（独立意图是什么）、
+schema 要点（必填/枚举/边界描述）、返回值形态（含证据）、一个高质量错误消息示例。
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0030-c06-loop.html">← A3 循环</a> · 下一课：<a href="0032-c08-context-engineering.html">A5 上下文工程</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 工具粒度的判据是？",
+  opts: ["会被单独想要吗", "实现起来难不难", "名字够不够简短"],
+  answer: 0,
+  why: "独立意图成立就独立成工具；太细增加路由与常驻成本，太粗成黑盒不可组合。"
+});
+Quiz.render("q2", {
+  q: "2. 「错误消息三要素」是哪三个？",
+  opts: ["状态、原因、建议", "时间、地点、人物", "代码、堆栈、日志"],
+  answer: 0,
+  why: "当前状态+失败原因+可行动建议，让模型一次修复；错误质量决定铁律①的价值。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

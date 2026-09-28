@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L09 · Web 后端鸟瞰</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M4 驱动层 · L09</div>
+  <h1>4062 行单文件后端怎么读：先画端点地图</h1>
+  <p class="src">45 min · 精读 web/app.py 的骨架（用 grep 速览，不通读）</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L08」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>读巨型单文件的正确姿势是<strong>先 grep 路由、再按分组下钻</strong>——
+  55 个端点按职责分成 9 组，每组内聚。别从第 1 行读到第 4062 行。
+</div>
+
+<h2>一、基础：FastAPI 和这个文件的角色</h2>
+<p>FastAPI 是 Python 的 Web 框架：你用装饰器声明"哪个 URL 路径 + 哪个 HTTP 方法"
+交给哪个函数处理，框架负责解析请求、调用函数、返回响应。web/app.py 就是
+Easel Web 工作台的<strong>全部后端</strong>：前端（React）发的每个请求都在这里被处理。</p>
+<p>先回答一个该问的问题：<strong>为什么 4000 行塞一个文件</strong>？这是取舍不是事故——
+单文件让"全局状态、中间件、端点"的可见性最高（都在一起），对单人/小团队快速迭代友好；
+代价是必须靠纪律分区（文件内注释分区清晰）+ 外部校验（tests/ 里的 test_web_security.py）。
+<strong>单文件不是原罪，无结构的单文件才是</strong>——这门课教的就是怎么在有结构的单文件里导航。</p>
+
+<h2>二、动手：30 秒生成端点清单</h2>
+<pre><code>cd ~/Code/Projects/easel-repo
+grep -n '@app\.\(get\|post\|put\|delete\)' web/app.py | head -60</code></pre>
+<p>这一条命令就是你的地图生成器：每个 <code>@app.get(...)</code> 装饰器是一个路由声明。
+顺着行号扫一遍，你会发现端点天然聚簇——聚簇就是分区。</p>
+
+<h2>三、九组端点地图（每组记一个问题）</h2>
+<table>
+  <tr><th>分组</th><th>代表端点</th><th>读时问自己</th></tr>
+  <tr><td>画像</td><td class="mono">GET /api/personas</td><td>六维文件怎么在线编辑？</td></tr>
+  <tr><td>技能</td><td class="mono">POST /api/skill</td><td>怎么同步执行一个技能？</td></tr>
+  <tr><td>配置</td><td class="mono">POST /api/env（白名单）</td><td>为什么有 _ENV_ALLOWLIST？</td></tr>
+  <tr><td>对话</td><td class="mono">POST /api/chat/stream</td><td>下一课主角</td></tr>
+  <tr><td>素材/产物</td><td class="mono">GET /api/outputs</td><td>为什么忽略 _ 前缀目录？</td></tr>
+  <tr><td>账号登录</td><td class="mono">POST /api/login/{platform}</td><td>LOGIN_RUNNERS 注册表？(L12)</td></tr>
+  <tr><td>归因</td><td class="mono">GET /api/analytics/{p}</td><td>headless 浏览器取数？</td></tr>
+  <tr><td>发布</td><td class="mono">POST /api/publish/{p}</td><td>分发到各平台脚本？(L07 的双调用方)</td></tr>
+  <tr><td>运营</td><td class="mono">/api/trends /api/schedule</td><td>状态存哪？</td></tr>
+</table>
+<p>这张地图同时回答了 L07 的悬案：<code>POST /api/publish/{platform}</code> 直接 Popen
+<code>skills/shared/scripts/</code> 里的 xhs_publish.py 等——Web 后端和 agent 是同一份发布脚本的
+<strong>两个调用方</strong>，这就是脚本住 shared 的原因。</p>
+
+<h2>四、三个结构性防御（精读点）</h2>
+<p><strong>① 双层锁</strong>：每会话 asyncio.Lock（进程内）+ fcntl.flock 跨进程锁。
+为什么需要两把？asyncio.Lock 只管<strong>本进程内</strong>的并发（同一事件循环里的协程）；
+但 Easel 的会话可能被两个进程同时推进——Web 后端推进中，用户又开了 CLI chat。
+flock 是操作系统级的文件锁，跨进程生效。<strong>锁的粒度 = 会话</strong>：不同会话互不阻塞，
+同一会话严格串行（A9 的 lane 思想在 Web 侧的镜像）。</p>
+<p><strong>② local_write_guard + TrustedHost 中间件</strong>：防浏览器跨站写本地文件。
+Web UI 在浏览器里跑，恶意网页可以让你的浏览器向 localhost:7860 发写请求（CSRF 思路）——
+守卫确保写操作只接受合法来源。有专门测试（test_web_security.py）护着。</p>
+<p><strong>③ 监听 0.0.0.0 但有注释辩护</strong>（:4060）："监听 0.0.0.0（非仅回环）是为了兼容
+Docker/远程容器端口转发访问 Easel 的场景"。<strong>写清"为什么"的注释本身就是架构文档</strong>——
+没有这行注释，下个人看到 0.0.0.0 会当成安全隐患"修掉"，Docker 用户全线失联。
+对比 gateway 的 --bind loopback（L01）：一个对外一个对内，各自有注释说理由。
+<strong>安全相关的绑定选择必须留注释，这是给未来审计者的交代。</strong></p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：通读 4000 行。</strong>第 3 天你还在第 800 行；grep 路由 30 秒有全图。<br>
+<strong>坑 2：把端点当孤立函数读。</strong>端点之间共享大量辅助函数（拼消息/取画像/锁会话），
+按组读才能看到共享面。<strong>坑 3：忽视轮询类端点。</strong>GET /api/login/{p}/status 这类
+轮询端点是"文件即协议"（L12）的 Web 消费侧——单独看它没意义，连着状态文件看才懂。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>不看资料，画出 9 组端点地图 + 每组一个代表端点。追问准备：为什么对话端点要单独一整层流式机制？（下一课答案）</p>
+<p><strong>一手源：</strong>web/app.py 的分区注释 + <code>grep -n '^# ---\|^# ==='</code> 看作者的分区方式。</p>
+
+<footer class="nav">
+  <a href="0012-l08-skill-sync.html">← L08</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0014-l10-streaming.html">L10 对话流式链路</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 读 4000 行单文件后端的第一步是？",
+  opts: ["grep 路由画出分组地图", "从第一行按顺序通读", "先读全部的类型定义"],
+  answer: 0,
+  why: "端点分组是天然目录；按分组下钻永远知道自己在哪。"
+});
+Quiz.render("q2", {
+  q: "2. 每会话为什么需要进程外文件锁？",
+  opts: ["多个进程会并发写会话", "asyncio 锁性能不够快", "文件锁写法更加时髦"],
+  answer: 0,
+  why: "asyncio.Lock 只管本进程；CLI 与 Web 两个进程同时推进同一会话时要靠 flock。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

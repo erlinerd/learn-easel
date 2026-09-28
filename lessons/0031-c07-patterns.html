@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A10 · Agent 常见设计模式</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A10 · 模式收束</div>
+  <h1>常见设计模式：每个模式你都在 Easel 见过</h1>
+  <p class="src">20 min · 六个模式，各配"何时用/何时退化"和 Easel 实例——本课是概念与正课之间的桥</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A9 多智能体」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>agent 的"设计模式"就是几种<strong>组织循环的方式</strong>。
+  每个模式记住三件事：怎么组织、解决什么问题、什么时候不该用。
+  学完这张表再进正课，看到的每个机制都能挂到一个模式名上。
+</div>
+
+<h2>六模式逐一展开</h2>
+
+<p><strong>1. ReAct（推理+行动交替）</strong>——一切的地基。<br>
+思想（Yao et al. 2022）：让模型在"行动"之间显式留下"思考"痕迹——想一步、做一步、看结果再想。
+它不是可选技巧，而是现代 agent 的默认形态：loop 里模型自然地先输出推理再输出工具调用。
+<em>何时退化</em>：纯执行类任务（翻译）不需要显式思考，白费 token。
+Easel 实例：loop 本体（正课 L16），thinking 流就是 ReAct 的"思"。</p>
+
+<p><strong>2. 路由 Router</strong>——先把请求分派给正确的处理器。<br>
+三种实现：显式路由器（一次便宜的 LLM 调用只做分类）、嵌入路由（向量相似度匹配）、
+提示词路由（能力索引常驻，主模型顺手选）。Easel 是第三种：114 个技能的 frontmatter
+常驻，主模型每轮顺手路由（AGENTS.md 规则①"先路由 SKILL"）。<br>
+<em>何时不该用</em>：处理器少于 3 个时，路由本身就是累赘。</p>
+
+<p><strong>3. 规划-执行 Planner-Executor</strong>——先产出计划，再逐步执行，中间可断点续跑。<br>
+关键设计不是"怎么规划"而是<strong>计划存哪</strong>：Easel 把跨层计划写成 manifest
+（产物路径 + 一句结论的薄索引），每层完成/失败都登记，失败后从断点续跑而不是从头再来
+（AGENTS.md 编排节，正课 L03）。<em>何时不该用</em>：两步以内的任务——规划的规划比任务本身贵。</p>
+
+<p><strong>4. 反思 Reflection / 自检</strong>——产出后自己检查一遍，不合格返工。<br>
+关键设计是<strong>返工的度</strong>：Easel 的规则是"自检失败带具体意见返工一次，
+轻微瑕疵诚实交付并说明，不循环返工"（AGENTS.md 制作节）。无限反思 = 每个产出烧双倍 token
+还可能越改越糟。<em>何时不该用</em>：可机械验证的事（文件非空、字数达标）用断言，不用反思。</p>
+
+<p><strong>5. 人机协同 Human-in-the-loop</strong>——关键节点必须人类确认。<br>
+两种触发：模型主动求助（ask_user，Easel 的问答卡）和流程强制（付费前确认、dry-run 后
+显式 --exec 才真发）。设计要点：<strong>确认点要少而重</strong>——什么都问，用户很快就无脑点确认，
+等于没问（警报疲劳，正课 L15 展开）。</p>
+
+<p><strong>6. 守门员 Gatekeeper</strong>——不可逆动作前的确定性闸门。<br>
+和模式 5 的区别：人机协同问"可以吗"，守门员是<strong>代码断言"必须过"</strong>。
+Easel 的 content_guard：出站内容命中密钥/内网信息 → exit 7 fail-closed，
+任何 prompt 都绕不过（正课 L14）。<em>何时不该用</em>：可逆操作——闸门太多，流程就死了。</p>
+
+<h2>两个加分模式（选学，正课会撞见）</h2>
+<p><strong>子智能体 Subagent</strong>：主 agent 派生独立上下文的子任务，用完即弃只回传结论
+（A9 专讲）。OpenClaw 的 subagent lane 并发隔离就是它的实现位。<br>
+<strong>编排器 Orchestrator</strong>：业务级的层间调度。Easel 的五层（发现→策划→制作→发布→归因）
+就是编排器——loop 是引擎，编排是导航。</p>
+
+<h2>怎么用这张表（正课的读法）</h2>
+<p>口诀：<strong>每见一个机制，先问"这是哪个模式？解决什么问题？什么时候会坏？"</strong>
+例如正课 L10 的 supervisor/forward 分离，本质是人机协同模式在工程层的延伸——
+用户离开（断线），工作不停，回来补确认结果。带着模式名读源码，你会读得比作者还快。</p>
+
+<h2>检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>出口检验（模式收束）</h2>
+<p>不看表，复述六个模式 + 各配一个 Easel 实例 + 各说一个"不该用的场景"（新增要求）。
+讲给我听——通过即模式收束，下一课进入 <a href="0036-c12-evals.html">A11 评测与可观测</a>。</p>
+<p><strong>一手源：</strong><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic · Building Effective Agents</a>——workflow 与 agent 的模式谱系原始出处。</p>
+
+<footer class="nav">
+  <a href="0035-c11-multi-agent.html">← A9 多智能体</a> · 下一课：<a href="0036-c12-evals.html">A11 评测与可观测</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. Easel 的技能 frontmatter 路由属于哪个模式？",
+  opts: ["路由 Router 模式", "反思 Reflection 模式", "子智能体 Subagent 模式"],
+  answer: 0,
+  why: "先把请求分派给正确的 SKILL 再执行——教科书式的提示词路由。"
+});
+Quiz.render("q2", {
+  q: "2. 守门员与人机协同的本质区别是？",
+  opts: ["代码断言与征得同意", "事前拦截与事后追溯", "免费检查与付费审核"],
+  answer: 0,
+  why: "gatekeeper 是确定性断言'必须过'（exit 7）；human-in-loop 是征询'可以吗'。一个不可绕过，一个可被授权跳过。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

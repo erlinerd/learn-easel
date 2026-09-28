@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A16 · 浏览器自动化 agent</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A16</div>
+  <h1>浏览器自动化 agent：最难的工具类</h1>
+  <p class="src">20 min · 从"网页是什么"讲起：登录态、选择器、反检测、对账——M5 的概念版地图</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A15 人机交互与信任」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>当目标平台没有 API（几乎所有社媒后台），浏览器就是唯一接口——
+  它是最通用也最脆弱的工具类：<strong>登录态是身份、选择器是地板、对账是成功判据</strong>。
+  本课是正课 M5（执行层四课）的概念版地图。
+</div>
+
+<h2>一、基础：浏览器自动化的原理（三分钟从零讲清）</h2>
+<p>先建立三个基本图像：</p>
+<p><strong>① 网页 = 文档 + 程序。</strong>服务器返回 HTML（文档结构），浏览器渲染成你看到的页面，
+页面上还有 JavaScript 在运行（弹窗、加载、动画）。所以"操作网页"有两层含义：
+改文档结构（DOM），或模拟人的交互（点击/输入）。</p>
+<p><strong>② 自动化框架 = 一只程序化的手。</strong>Playwright/ Puppeteer/Selenium 启动一个
+<strong>被程序控制的真浏览器</strong>（就是你机器上那个 Chromium，只是由代码发指令）：
+<code>page.click("#submit")</code>、<code>page.type("标题")</code>、<code>page.goto(url)</code>。
+因为操作的是真浏览器，页面里的 JS 照常跑、Cookie 照常存——和真人用浏览器几乎无差别。</p>
+<p><strong>③ 无头（headless）= 不显示窗口。</strong>浏览器在后台跑，省资源、可并发；
+但指纹特征与有头略有差异，部分风控会盯它（后面第四节）。</p>
+
+<h2>二、为什么是浏览器（而不是 API）</h2>
+<p>三个现实原因：① <strong>平台不开放</strong>——小红书/抖音的创作者后台没有公共 API，
+但每个人都有浏览器；② <strong>身份天然合法</strong>——用你的登录态走和真人一样的界面，
+比伪造 API 请求更"正常"；③ <strong>能力最全</strong>——界面上有的功能都能做。
+代价：平台随时改版、随时加强风控——这是一场没有终点的维护战。</p>
+
+<h2>三、登录态：浏览器 agent 的身份层</h2>
+<pre><code>Playwright 持久化目录（user-data-dir）= 一个"浏览器人格"
+  ~/.easel-browser-profiles/XiaohongshuProfile   ← Cookie/缓存/指纹全在里面
+  登录一次（扫码），之后 headless 复用</code></pre>
+<p>为什么持久化目录这么重要：登录的本质是平台发给你一组 Cookie（身份凭证），
+浏览器每次请求都自动带上。普通模式下关浏览器 Cookie 就没了；持久化目录把
+<strong>整个浏览器状态存到磁盘</strong>，下次启动还是"已登录的你"。关键认知：
+<strong>登录态是资产</strong>——它存用户家目录永不入库（A12 最小权限）、
+可以被拷贝迁移（IP 风控时的救命招，正课 L13）、失效有专门信号
+（readback 的 login_required 档）。登录流程本身是分钟级长流程（扫码→等待→确认），
+跨进程传递要靠状态文件协议（starting→qr_ready→…→success，正课 L12 的状态机）。</p>
+
+<h2>四、定位元素：选择器的脆弱性与治理</h2>
+<p>要让代码点"发布按钮"，得先在 DOM 里<strong>找到</strong>它——靠选择器
+（CSS 选择器/XPath，如 <code>button.publish-btn</code>）。模型"看"网页的方式：
+原始 DOM 太大太噪，实践用<strong>accessibility 快照</strong>或精简结构喂给模型辅助决策；
+但自动化执行通常用<strong>确定性选择器</strong>，因为快照每轮都变、成本高。
+选择器的致命弱点：<strong>平台改版 = 选择器全灭</strong>——按钮换个 class 名，agent 当场失明。
+治理是浏览器 agent 的日常：Easel 把全部选择器集中在文件顶部一个
+SELECTORS 字典、<strong>每条标注参考来源</strong>——平台改版时改一处、review 一眼看到动了什么。
+教训：<strong>选择器散落在代码各处的 agent，平台一改版就死给你看</strong>。</p>
+
+<h2>五、反检测与拟人化：克制地像人</h2>
+<p>平台怎么识别自动化？两大线索：<strong>指纹</strong>（自动化浏览器会暴露特殊标记，如
+navigator.webdriver=true）和<strong>节奏</strong>（人打字有快有慢、有停顿，脚本毫秒级匀速连击）。
+Easel 的对策分层且<strong>克制</strong>：去掉自动化标记（--disable-blink-features）、
+逐字符输入模拟打字、按动作语义的随机停顿（task-switch 1.8–4.5s，正课 L15）——
+但<strong>刻意不做</strong>大段 JS 注入伪装，因为越激进的伪装特征越多，反而更像机器人。
+底线认知：这是平台与自动化的持续博弈，账号风险永远存在——
+测试号先行、小流量验证、人工复核高风险操作。</p>
+
+<h2>六、验证：浏览器操作的"成功"怎么定义</h2>
+<pre><code>toast 弹了   ≠ 发布成功（可能被风控拦截）
+按钮变灰     ≠ 发布成功（前端状态而已）
+URL 离开发布页 ≈ 较强信号（Easel 小红书的判据）
+回创作者中心读到本人新作品 = 最强信号（readback 对账，四档结论）</code></pre>
+<p>证据强度递增，代价也递增——按业务的不可逆程度选档。这是 A11 结果级评测
+在浏览器场景的特化，也是 A13"先对账再重试"的前提。</p>
+
+<h2>七、常见踩坑</h2>
+<p><strong>坑 1：headless 想当然。</strong>无头浏览器指纹更明显，登录环节常被风控
+（小红书 300012）——要有有头降级路径（Easel 的 CloakBrowser 窗口）。
+<strong>坑 2：toast 当成功。</strong>不上对账的发布都是薛定谔的发布。
+<strong>坑 3：登录态当缓存随意清。</strong>清缓存=销毁身份，重新登录=重新风控考验。</p>
+
+<h2>八、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>九、出口检验</h2>
+<p>给"自动填写公司报销单"设计浏览器方案：登录态怎么管？表单定位用什么策略？
+提交后怎么验证成功？哪些步骤必须人确认？发到对话里我批改——通过即可进入毕业桥 A17。</p>
+
+<footer class="nav">
+  <a href="0045-a14-agent-ux.html">← A15 人机交互与信任</a> · 下一课：<a href="0047-a16-harness.html">A17 Harness 选型</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 自动化框架（如 Playwright）操作的是什么？",
+  opts: ["一只程序控制的真浏览器", "直接修改服务器数据", "模拟 HTTP 请求发包"],
+  answer: 0,
+  why: "它启动被代码控制的真浏览器：页面 JS 照常跑、Cookie 照常存——和真人几乎无差别。"
+});
+Quiz.render("q2", {
+  q: "2. 发布成功的最强证据是？",
+  opts: ["回读平台见到新作品", "界面弹出了成功提示", "按钮恢复可以再点"],
+  answer: 0,
+  why: "toast/按钮是前端状态；平台侧事实（作品列表命中）才是结果级证据。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

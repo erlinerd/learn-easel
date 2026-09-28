@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>速查 · Agent 构造蓝图（六件套）</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 参考文档</div>
+  <h1>Agent 构造蓝图：六件套（速查）</h1>
+</header>
+
+<p>任何 LLM agent 都由<strong>六件套</strong>构成。Easel 每件都给了完整实现，是最完整的开源解剖标本之一。</p>
+
+<table>
+  <tr><th>#</th><th>构造块</th><th>职责</th><th>Easel 的实现</th><th>去看哪</th></tr>
+  <tr>
+    <td>1</td><td><strong>Harness（运行时）</strong></td>
+    <td>模型之上的循环：收消息 → 调模型 → 执行工具 → 回填结果 → 重复</td>
+    <td>不自研，借用 OpenClaw gateway（loopback:18789，OpenAI 兼容端点）</td>
+    <td class="mono">scripts/gateway.sh</td>
+  </tr>
+  <tr>
+    <td>2</td><td><strong>提示词栈</strong></td>
+    <td>人格 + 规则 + 上下文分层，常驻层控 token</td>
+    <td>四层栈：SOUL.md（人格）→ AGENTS.md（规则）→ CONTEXT.md（路径）→ SKILL.md（按需）；画像以消息内联注入，不写全局文件</td>
+    <td class="mono">docs/prompt-stack.md<br>openclaw/workspace/*.md</td>
+  </tr>
+  <tr>
+    <td>3</td><td><strong>能力系统（技能）</strong></td>
+    <td>能力可声明、可路由、可按需加载</td>
+    <td>114 个技能目录。frontmatter 三字段常驻做路由；SKILL.md(&lt;200行) 触发时加载；references/scripts 执行中按需</td>
+    <td class="mono">docs/SKILL-SPEC.md<br>skills/openclaw/</td>
+  </tr>
+  <tr>
+    <td>4</td><td><strong>LLM-脚本分工</strong></td>
+    <td>决策归模型，确定性 IO 归代码</td>
+    <td>"prompt 薄壳 + 确定性厚脚本"：48 个共享脚本（约 2.3 万行）管所有环境交互；SKILL.md 只写流程约束</td>
+    <td class="mono">skills/shared/scripts/</td>
+  </tr>
+  <tr>
+    <td>5</td><td><strong>记忆与状态</strong></td>
+    <td>会话持久化 + 长期记忆的作用域设计</td>
+    <td>会话 jsonl 按 uuid5 钉死；账号记忆只在 <code>profiles/&lt;X&gt;/memory.md</code>；全局 MEMORY.md 刻意留空防并发污染</td>
+    <td class="mono">easel/persona.py</td>
+  </tr>
+  <tr>
+    <td>6</td><td><strong>安全与可靠边界</strong></td>
+    <td>闸门、确认、对账、拟人化</td>
+    <td>content_guard fail-closed(exit 7)；默认 dry-run 须 --exec；platform_readback 发布后对账；persona_gate 只提醒；human_pace 拟人停顿</td>
+    <td class="mono">skills/shared/scripts/<br>content_guard.py 等</td>
+  </tr>
+</table>
+
+<h2>读任意 agent 仓库的六问</h2>
+<p>拿到新仓库按顺序问，30 分钟内可定位构造：</p>
+<ol>
+  <li><strong>循环在哪？</strong>找 harness 入口（gateway/daemon/agent loop），看它监听什么、调哪个模型 API</li>
+  <li><strong>系统提示词由什么组成？</strong>找 SOUL/AGENTS/CONTEXT/system-prompt 类文件，数常驻层多少 token</li>
+  <li><strong>能力怎么声明与路由？</strong>函数工具（tools JSON）？MCP？技能目录？路由发生在模型侧还是代码侧？</li>
+  <li><strong>哪些事固化在脚本、哪些留给模型？</strong>这是可靠性的分水岭</li>
+  <li><strong>状态和记忆存哪、作用域多大？</strong>会话文件在哪；长期记忆全局还是分域</li>
+  <li><strong>边界在哪？</strong>有没有闸门、确认步骤、事后对账——没有边界的 agent 不可交付</li>
+</ol>
+
+<h2>关键构造决策（换你来建时的默认答案）</h2>
+<table>
+  <tr><th>决策点</th><th>Easel 的选择</th><th>默认理由</th></tr>
+  <tr><td>自研 harness vs 复用</td><td>复用 OpenClaw</td><td>循环/会话/流式是脏活，先借再改</td></tr>
+  <tr><td>工具 vs 技能目录</td><td>技能目录（markdown 流程 + 脚本）</td><td>能力可读可审可版本化，agent 按流程自执行</td></tr>
+  <tr><td>常驻提示词策略</td><td>极简单真相源，能力全部下沉按需</td><td>对抗长对话注意力衰减，控 token</td></tr>
+  <tr><td>记忆作用域</td><td>按画像/账号分域，禁全局</td><td>并发会话不互相污染</td></tr>
+  <tr><td>副作用策略</td><td>默认 dry-run + 闸门 + 对账</td><td>不可逆操作必须有证据链</td></tr>
+</table>
+
+<footer class="nav">
+  相关：<a href="../lessons/0002-agent-anatomy.html">第 2 课 · Agent 的解剖学</a> ·
+  <a href="agent-deployment-taxonomy.html">部署形态分类法</a><br>
+  有疑问随时问你的 agent 老师。
+</footer>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

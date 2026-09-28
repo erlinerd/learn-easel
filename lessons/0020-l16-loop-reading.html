@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L16 · loop 骨架精读</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M6 内核层 · L16</div>
+  <h1>loop 骨架精读：坐在引擎室里读引擎</h1>
+  <p class="src">45 min · agent-loop.ts:214-436 · 前置：<a href="0030-c06-loop.html">A3 循环</a> + <a href="../reference/agent-loop-cheatsheet.html">速查表</a></p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L15」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>A3 教你"loop 长什么样"，本课要你<strong>逐行读出每一件事的位置</strong>，
+  尤其是 :317 那个三段式布尔——整个 1562 行文件的灵魂。出口标准不变：合上代码，手写 10 行伪代码。
+</div>
+
+<h2>一、外层入口逐行走读（:214-232 原文）</h2>
+<pre><code>while (true) {                                    // 外层：run 的生命周期
+  let hasMoreToolCalls = true;
+
+  while (hasMoreToolCalls || pendingMessages.length > 0) {   // 内层：agentic 主循环
+    if (await stopIfAborted()) {                  // ← 铁律③的 abort 检查，每轮第一件事
+      return newMessages;
+    }
+
+    if (!firstTurn) {
+      await emit({ type: "turn_start" });         // 事件：一轮开始（外部可观测）
+      turnOpen = true;
+    } else {
+      firstTurn = false;
+    }
+
+    if (pendingMessages.length > 0) {
+      const injectedMessage = await commitPendingMessages();   // steering/排队消息入 transcript
+      if (!injectedMessage && !hasMoreToolCalls) {
+        // 整批 drained 消息在落盘前被取消的边界情况…</code></pre>
+<p>读法提示：<strong>先认内层条件再读体</strong>。内层继续的条件是
+"还有工具要消化 <strong>或</strong> 还有排队消息"——注意 `pendingMessages` 也在条件里：
+用户在 agent 干活时发的新消息（steering），不是丢掉而是排进下一轮。这就是 A3 说的
+"可中断"的温和版本：用户的话永远有位置，但不一定打断当前步。</p>
+
+<h2>二、心脏：:317 三段式逐项拆（:312-330 原文）</h2>
+<pre><code>hasMoreToolCalls =
+  streamed.continuationRequired ||                                    // ①
+  (message.stopReason === "stop" &&
+   message.endTurn === false &&
+   !executedToolBatch?.terminate) ||                                  // ②
+  (executedToolBatch !== undefined && !executedToolBatch?.terminate); // ③
+pendingMessages = executedToolBatch?.steeringMessages ?? [];
+...
+for (const result of terminalToolBatch?.messages ?? []) {
+  state.context.messages.push(result);           // ← 铁律②：tool results 追加进上下文
+  newMessages.push(result);
+}
+await emit({ type: "turn_end", message, toolResults });</code></pre>
+<p><strong>① continuationRequired</strong>：流式层判定"模型还有没说完的工具调用"——
+流可能分多段吐 tool calls，这段没完就得继续。<br>
+<strong>② stop 且 endTurn === false</strong>：模型说"stop"但显式标记"话没说完"
+（Responses API 的续跑语义）——即使看起来停了也不终止。<br>
+<strong>③ 批次未终止</strong>：刚执行的这批工具没有被钩子/准入标记 terminate——
+只要没被叫停且确实有批次在跑，就再给模型一轮。<br>
+三项<strong>任一为真</strong>就继续内层循环；全假才出循环走 followUp 队列 → agent_end。</p>
+
+<h2>三、读前装备 + 任务单（不变）</h2>
+<pre><code>打开 ~/Code/Projects/openclaw-src/packages/agent-core/src/agent-loop.ts
+□ :218  stopIfAborted —— 谁设置这个信号？（往上层找 abort controller）
+□ :252  streamAgentResponse —— 回调参数里发生了什么（下一课 L17 主角）
+□ :281  providerFailed = stopReason error|aborted —— 终止路径之一
+□ :317  三段式（本课已拆，去源码核对每个字段）
+□ :327  回填 push（本课已见，找它在流式路径的孪生兄弟）
+□ :332  turn_end 事件
+□ :373  prepareNextTurn 钩子 —— 谁在这里换模型/思维档
+□ :428-439 排空 followUp → agent_end</code></pre>
+
+<h2>四、三个深挖点（有余力再做）</h2>
+<p>① abort 检查为什么在循环顶部而不是流式回调里？（提示：回调里中断要处理半成品消息的归属）。<br>
+② steering（:414 getSteeringAtCheckpoint）与 followUp 的区别——一个打断当前工具批次，一个排队等下轮；
+去源码找出它们分别从哪个队列来。<br>
+③ 外层的重试预算（helpers.ts:51-54，24 基数+8/档案，min 32 max 160）在哪个层生效？
+为什么内层 agentic 循环反而没有硬步数限制？（提示：内层有 tool-loop 检测兜底。）</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：把外层当内层读。</strong>外层管"这次 run 活着"（重试/compaction 后续跑），
+内层管"这一步做什么"——在源码里两层都是 while，靠变量名区分，别迷路。</p>
+<p><strong>坑 2：忽略 taint。</strong>:320 有一行 `turnTainted ||= toolResults.some(toolResultTaintsTurn)`——
+被污染的结果会标记整轮，影响后续重放。现在只需知道存在，L17 讲钩子时回收。</p>
+<p><strong>坑 3：跳过事件 emit。</strong>emit 是外部世界（Easel 的流式！）看懂 loop 的唯一窗口；
+只读控制流不读事件，等于看了引擎没看仪表盘。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p><strong>合上一切资料</strong>，手写 ≤10 行伪代码覆盖双层循环的完整控制流，
+必须含至少三个终止路径（abort / providerFailed / 三段式全假）。
+写完发我，我逐行对照源码批改。</p>
+<p><strong>一手源：</strong>agent-loop.ts:214-436 本体；卡住先回 <a href="../reference/agent-loop-cheatsheet.html">速查表</a> 看调用链图。</p>
+
+<footer class="nav">
+  <a href="0019-l15-human-pace.html">← L15</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0021-l17-tool-execution.html">L17 工具执行与流式</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 内层循环继续的条件在哪个行为核心？",
+  opts: ["hasMoreToolCalls 计算", "providerFailed 的判定", "followUp 队列排空"],
+  answer: 0,
+  why: ":317 的三段式（continuationRequired / endTurn===false / batch.terminate）决定还要不要下一轮。"
+});
+Quiz.render("q2", {
+  q: "2. steering 与 followUp 的本质区别是？",
+  opts: ["打断当前批次与排队下轮", "长消息与短消息的区别", "系统消息与用户消息的区别"],
+  answer: 0,
+  why: "steering 打断正在执行的工具批次立即生效；followUp 挂队列等当前 run 结束。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

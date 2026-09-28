@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>速查 · 总阅读路线图（agent 构建之道）</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+.phase { margin: 1.6rem 0; }
+.phase h2 { margin-top: 1.2rem; }
+.task { display: flex; gap: 0.55rem; align-items: baseline; margin: 0.45rem 0; }
+.task input { transform: translateY(2px); }
+.task .mono { font-size: 0.82rem; }
+.task small { color: var(--muted); }
+.done { text-decoration: line-through; color: var(--muted); }
+</style>
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 总路线图</div>
+  <h1>阅读顺序：从概念到动手</h1>
+  <p class="src">主线：概念打底 → Easel 全景 → loop 精读 → 能力系统 → 记忆与安全 → 动手输出<br>
+  每一步只回答一个问题 · 勾选进度自动保存在本机浏览器</p>
+</header>
+
+<div class="phase">
+<h2>阶段 0 · 概念打底 <small>（已完成 · 回顾 15 min）</small></h2>
+<label class="task"><input type="checkbox" data-key="p0-1"><span>第 1 课 <a href="../lessons/0001-local-vs-cloud-agent.html">端侧还是云端</a> <small>— 5 组件判定法</small></span></label>
+<label class="task"><input type="checkbox" data-key="p0-2"><span>第 2 课 <a href="../lessons/0002-agent-anatomy.html">六件套解剖</a> <small>— 构造蓝图 + 读仓库六问</small></span></label>
+<label class="task"><input type="checkbox" data-key="p0-3"><span>第 3 课 <a href="../lessons/0003-agent-loop.html">loop 骨架</a> <small>— 双层 while + 七步骨架</small></span></label>
+</div>
+
+<div class="phase">
+<h2>阶段 1 · Easel 全景：先读"agent 被喂了什么" <small>（1 小时）</small></h2>
+<label class="task"><input type="checkbox" data-key="p1-1"><span><code class="mono">easel-repo/openclaw/workspace/AGENTS.md</code>（111 行）<small>— Q：agent 的行为规则有哪几条？<strong>全项目最重要文件</strong></small></span></label>
+<label class="task"><input type="checkbox" data-key="p1-2"><span><code class="mono">easel-repo/openclaw/workspace/SOUL.md</code>（31 行）<small>— Q：人格层写了什么、刻意不写什么？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p1-3"><span><code class="mono">easel-repo/docs/prompt-stack.md</code> <small>— Q：四层栈怎么组合？画像为何内联不进全局文件？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p1-4"><span><code class="mono">easel-repo/docs/SKILL-SPEC.md</code> <small>— Q：一个技能的合法结构是什么？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p1-5"><span>对照读两个技能 <small>— Q："prompt 薄壳 + 确定性厚脚本"长什么样？</small><br>
+<span class="mono">skills/openclaw/social-content/</span>（纯 prompt 型）vs <span class="mono">skills/openclaw/skill-xhs-publisher/</span>（薄壳+共享脚本型）</span></label>
+</div>
+
+<div class="phase">
+<h2>阶段 2 · Loop 精读（3 小时）<small>＝ 第 4 课五站，详见 <a href="../lessons/0004-reading-path.html">路线图课程页</a></small></h2>
+<label class="task"><input type="checkbox" data-key="p2-1"><span>站 1 <code class="mono">openclaw-src/packages/agent-core/src/agent-loop.ts:214-436</code> <small>— Q：七件事各在哪几行？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p2-2"><span>站 2 <code class="mono">agent-stream-response.ts:286-357</code> <small>— Q：流式事件怎么变成工具执行？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p2-3"><span>站 3 <code class="mono">easel-repo/web/app.py:2051-2470</code> <small>— Q：浏览器断开为什么 agent 照跑？runId 闩锁怎么隔离？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p2-4"><span>站 4 <code class="mono">attempt-system-prompt-prepare.ts:244-301</code> ＋ 回看 AGENTS.md <small>— Q：workspace 文件在哪一行被拼进 system prompt？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p2-5"><span>站 5 <code class="mono">run/attempt.ts:331-350</code> ＋ <code class="mono">agent-session-compaction.ts:490</code> <small>— Q：工具目录怎么装配？压缩后历史发生什么？</small></span></label>
+</div>
+
+<div class="phase">
+<h2>阶段 3 · 能力系统深读（半天）<small>— 六件套 ③</small></h2>
+<label class="task"><input type="checkbox" data-key="p3-1"><span><code class="mono">easel/openclaw_workspace.py</code> ＋ <code class="mono">openclaw/sync.sh</code> <small>— Q：114 个技能怎么同步进 agent 实际读的 workspace？为什么不许硬编码路径？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p3-2"><span><code class="mono">easel/commands/skill.py</code> <small>— Q：<code>easel skill</code> 到底做了什么？（剧透：只是拼一条消息）</small></span></label>
+<label class="task"><input type="checkbox" data-key="p3-3"><span><code class="mono">skills/shared/scripts/manifest.py</code> ＋ <code class="mono">output_paths.py</code> <small>— Q：跨层编排的"薄索引"与产物路径治理怎么设计？</small></span></label>
+</div>
+
+<div class="phase">
+<h2>阶段 4 · 记忆与安全边界（半天）<small>— 六件套 ⑤⑥</small></h2>
+<label class="task"><input type="checkbox" data-key="p4-1"><span><code class="mono">easel/persona.py</code> <small>— Q：画像怎么内联注入？TURN_REMINDER 对抗什么？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p4-2"><span><code class="mono">skills/shared/scripts/content_guard.py</code> <small>— Q：fail-closed 闸门怎么写？（exit 7）</small></span></label>
+<label class="task"><input type="checkbox" data-key="p4-3"><span><code class="mono">skills/shared/scripts/platform_readback.py</code> <small>— Q："没核实＝没成功"的证据链怎么建？</small></span></label>
+<label class="task"><input type="checkbox" data-key="p4-4"><span><code class="mono">login_state.py</code> ＋ <code class="mono">human_pace.py</code> <small>— Q：长流程状态怎么跨进程传？拟人化停顿怎么设计？</small></span></label>
+</div>
+
+<div class="phase">
+<h2>阶段 5 · 动手输出（1–2 天）<small>— 知识的最终检验</small></h2>
+<label class="task"><input type="checkbox" data-key="p5-1"><span>200 行写一个最小 agent loop <small>— 对照 agent-loop.ts 骨架：调模型→执行工具→回填→循环</small></span></label>
+<label class="task"><input type="checkbox" data-key="p5-2"><span>给它写一个 SKILL.md 技能 ＋ 一个 fail-closed 闸门 <small>— 把 Easel 的两个核心模式移植到自己的实现</small></span></label>
+<label class="task"><input type="checkbox" data-key="p5-3"><span>对照 <a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic: Building Effective Agents</a> 复盘自己的实现</span></label>
+</div>
+
+<footer class="nav">
+  节奏建议：一次只推进一个阶段；每读完一项回来给老师讲一遍（费曼式检索）。<br>
+  课程结构总览（6 模块 24 课）：<a href="syllabus.html">课程大纲</a> ·
+  速查配套：<a href="agent-anatomy.html">构造蓝图六件套</a> ·
+  <a href="agent-loop-cheatsheet.html">loop 解剖</a> ·
+  <a href="agent-deployment-taxonomy.html">部署形态</a>
+</footer>
+
+<script src="../assets/checklist.js"></script>
+<script>
+Checklist.init("reading-roadmap");
+// 勾选后给文字划线，视觉化进度
+document.addEventListener("checklist:change", function () {
+  document.querySelectorAll(".task").forEach(function (t) {
+    var cb = t.querySelector("input");
+    var text = t.querySelector("span") || t;
+    text.classList.toggle("done", cb.checked);
+  });
+});
+document.dispatchEvent(new CustomEvent("checklist:change"));
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

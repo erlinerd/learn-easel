@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L14 · fail-closed 闸门与发布对账</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M5 执行层 · L14</div>
+  <h1>fail-closed 闸门与对账：不可逆操作的证据链</h1>
+  <p class="src">45 min · 精读 content_guard.py + platform_readback.py</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L13」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>交付级 agent 的底线是两条：出站内容<strong>fail-closed</strong>扫描
+ （命中敏感即 exit 7，宁停不漏），副作用操作<strong>事后对账</strong>（没有平台侧证据就标 unverified，
+  绝不把未核实当成功）。
+</div>
+
+<h2>一、基础：两个概念的从零讲起</h2>
+<p><strong>fail-closed vs fail-open</strong>：安全机制自身出错时，系统默认"拦"还是"放"？
+防火墙崩了：拦一切（closed，业务中断但安全）还是放一切（open，业务继续但裸奔）？
+判据只有一个问题——<strong>这个功能失效时最坏后果是什么</strong>。不可逆伤害（密钥泄露、误发布）
+必须 fail-closed：宁可停摆不可出事。可逆/体验类功能可以 fail-open（A13 讲过判据）。
+content_guard 是 fail-closed 的教科书实现。</p>
+<p><strong>对账（reconciliation）</strong>：借自财务——账本说你有 100 元，去银行柜台<strong>实际查一次</strong>，
+两边对上才算数。发布场景：脚本说"我点了发布按钮"（我方账本），去创作者中心
+<strong>实际查一次作品列表</strong>（平台方账本），查到新作品才算真成功。为什么必须对账？
+因为发布链路太长（前端→风控→存储→索引），任何一环都可能静默失败，而我方唯一能看到的
+只是界面表现（L13 的敌人 1：界面在骗你）。<strong>对账把"我做了动作"升级为"动作产生了事实"</strong>。</p>
+
+<h2>二、content_guard.py：两级分类 + fail-closed</h2>
+<table>
+  <tr><th>级别</th><th>命中什么</th><th>动作</th></tr>
+  <tr><td><strong>BLOCK</strong></td><td>API key、内网域名（*.devops...）、私网/代理 IP、内部绝对路径、env 变量名、.env 真值</td><td class="mono">sys.exit(7) 硬拦</td></tr>
+  <tr><td><strong>WARN</strong></td><td>"由 AI 生成"、OpenClaw、Claude、模型名等自曝措辞</td><td>只告警不拦（防误伤 AI 科普内容）</td></tr>
+</table>
+<p>机制层面它很朴素：<strong>模式清单 + 正则/子串匹配</strong>，扫描所有将要出站的文本字段
+（标题/正文/标签/评论）。朴素恰恰是它的力量——确定性、零成本、可测试
+（对比：让 LLM"检查内容里有没有敏感信息"是概率性的，A13 软失败的活教材）。
+两个精细设计：<strong>命中片段打码展示</strong>（报告里证明拦得对，又不二次泄露）；
+<strong>redact 子命令</strong>输出脱敏后的文本供修复。</p>
+<p><strong>为什么 fail-closed 而不是告警</strong>：告警可以被忽略、被"这次特殊"跳过——
+人的注意力是稀缺资源，天天响的警报等于没有警报（A15 警报疲劳）。
+exit 7 不可协商：进程直接死，发布必不发生。配套的守护设计也值得学：
+<strong>全库 12 处</strong>真发脚本在 <code>--exec</code> 前强制 <code>guard_or_die()</code>，
+而 validate_skills.py 的 PUBLISH_SCRIPT_CONTRACTS 校验发布脚本没把这个调用"改丢"——
+<strong>安全标记本身也有守护</strong>（防未来贡献者重构时不小心删掉，防的就是"改丢"这类慢 性事故）。</p>
+
+<h2>三、platform_readback.py：四档对账结论</h2>
+<pre><code># platform_readback.py:12-15（源码注释原文）
+verified       读回对上（标题前缀 + since 时间窗）——附带作品 id 与状态为准
+unverified     读回通了但多轮未见新作品（索引延迟/审核队列等，保留待查）
+login_required 读回时登录态已失效——明确报「需重新登录」
+readback_error 读回通道本身失败（网络/页面结构改版），附原始证据</code></pre>
+<p>两个匹配常量（:35-37）：<code>TITLE_KEY_LEN = 12</code>（标题前 12 字为对账键——
+全标题匹配太脆，一个空格差异就 miss；前缀 12 字足够区分）+
+<code>SINCE_TOLERANCE_MS = 10 * 60 * 1000</code>（发布时间容差 10 分钟——吸收平台时间戳精度
+和索引延迟，防同标题旧作品误判）。</p>
+<p><strong>为什么是四档而不是二值</strong>：如果只有"成功/失败"，读不到作品时你报哪个？
+报成功是撒谎（可能真没发出去）；报失败会触发上游盲目重试（可能重复发布！）。
+unverified 这一档的诚实性是设计核心——<strong>它把判断权交还给上游</strong>：
+上游（agent 或人）拿着"未核实"可以去人工检查、可以延迟后再查，但绝不会被假成功骗。</p>
+
+<h2>四、合起来：一次发布的完整证据链</h2>
+<pre><code>plan（dry-run 列内容）→ 人确认 → guard_or_die()（出站扫描，exit 7 拦密钥）
+  → publish --exec（真发）→ URL 校验（轻量信号，L13）
+  → readback 对账（最强信号：verified / unverified / login_required / readback_error）
+  → publish-log 留痕（本次链条的完整记录，审计与复盘的基础）</code></pre>
+<p>每一环都在把"我做了"升级为"有证据我做了"——证据链思想：单点信号都可疑，
+串联的多源信号才可信。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：闸门做成"可跳过的选项"。</strong>--allow-unsafe 这类后门一旦存在就会被用——
+Easel 的立场：删除敏感内容后重发，不用 --allow-unsafe 绕过，除非用户明确要求。
+<strong>坑 2：对账键选全文匹配。</strong>平台可能规范化空白/字符，全等匹配假阴性一堆；
+前缀 + 时间窗是实践口径。<strong>坑 3：把 unverified 当 failed 自动重试。</strong>
+A13 红线 2 的现场版——未核实 ≠ 未发生。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>设计题：给"自动转账"这个不可逆操作设计证据链（发布前闸门拦什么？发布后对账查什么？
+四档结论怎么定义？）。讲给我听。</p>
+<p><strong>一手源：</strong>content_guard.py 的 selftest——看"正例必抓、反例必放行、分级正确"怎么被验证。</p>
+
+<footer class="nav">
+  <a href="0017-l13-xhs-publish.html">← L13</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0019-l15-human-pace.html">L15 拟人化与风控</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 命中 API key 时 content_guard 的动作是？",
+  opts: ["直接退出拦截", "警告但允许发出", "打码后继续发出"],
+  answer: 0,
+  why: "BLOCK 级 fail-closed：exit 7。告警可被跳过，硬退出不能——宁可误停不可漏发。"
+});
+Quiz.render("q2", {
+  q: "2. 对账读不到已发内容时结论是？",
+  opts: ["标注 unverified", "直接判定为成功", "直接判定为失败"],
+  answer: 0,
+  why: "读不到≠没发出去（可能有索引延迟）；报失败会诱发重复发布的盲目重试——诚实保留未核实。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

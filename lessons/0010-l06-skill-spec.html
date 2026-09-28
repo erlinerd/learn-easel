@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L06 · SKILL-SPEC 与三层加载</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M3 能力层 · L06</div>
+  <h1>SKILL-SPEC：114 个技能为什么不撑爆上下文</h1>
+  <p class="src">45 min · 精读 docs/SKILL-SPEC.md + 随便挑 3 个技能目录对照</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L05」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>答案是<strong>三层加载</strong>——常驻的只有每个技能的
+  frontmatter（name + description，约一行）；SKILL.md 主体被触发才进上下文；
+  references/ 和 scripts/ 执行中按需。token 只为正在做的事付费。
+</div>
+
+<h2>一、基础：一个技能目录的合法解剖（规范逐条）</h2>
+<p>先看规范（SKILL-SPEC.md v0.3）规定的完整结构，再逐条说为什么：</p>
+<pre><code>skill-xxx/
+├── SKILL.md        # 必须，&lt;200 行硬上限；frontmatter 只许 3 个字段
+├── references/     # 领域知识，执行中按需读取，不常驻
+├── scripts/        # 可执行脚本，代码永不进 prompt
+├── tests/          # test1.prompt + test1.expected（关键词匹配）
+└── EASEL-META.md   # 来源/收录信息</code></pre>
+<p><strong>为什么 SKILL.md 硬性 &lt;200 行</strong>：SKILL.md 会被整个读进上下文（触发时），
+它是 token 预算的单位——200 行 ≈ 2K token，114 个里哪怕一轮触发 3 个也只有 6K。
+没有上限的技能会悄悄长成 2000 行的百科全书，触发一次半轮窗口没了。<strong>上限是预算工具</strong>，
+不是文风建议。</p>
+<p><strong>为什么 frontmatter 只许 name/description/layer 三个字段</strong>：frontmatter 是
+<strong>常驻部分</strong>（每轮都在上下文里做路由），字段越多常驻越贵。规范还<strong>显式禁止</strong>
+version、tags、allowed-tools 等——禁令本身是设计：把"感觉有用"的字段挡在常驻区外
+（要记录来源？去 EASEL-META.md，那不常驻）。A5 的预算纪律被写成了 schema。</p>
+<p><strong>三层加载时机表</strong>：</p>
+<table>
+  <tr><th>层</th><th>何时进上下文</th><th>离开时</th></tr>
+  <tr><td>frontmatter</td><td>每轮常驻</td><td>会话结束</td></tr>
+  <tr><td>SKILL.md 主体</td><td>模型选定该技能时</td><td>compaction 或会话结束</td></tr>
+  <tr><td>references/</td><td>SKILL.md 按引用指名读取时</td><td>同上</td></tr>
+  <tr><td>scripts/</td><td><strong>永不进 prompt</strong>，只被执行</td><td>—</td></tr>
+</table>
+
+<h2>二、description 是路由器，不是说明书</h2>
+<p>agent 靠常驻的 description 决定"要不要加载这个技能"——它是 114 选 N 的路由键。
+规范要求 description 用中文写清<strong>能力 + 触发场景/用户说法 + 与相邻技能的边界</strong>。
+看 social-content 的写法（大意）："多平台社媒文案撰写……小红书整套笔记找 xhs-note-creator、
+带货转化找 copywriting"——<strong>负空间也是路由信息</strong>：明确"不是我"才能让相邻技能被正确触发。
+这与 L7 的工具 description 纪律完全同构——Easel 把它升级成了制度。</p>
+
+<h2>三、token 经济学（出口检验的算术）</h2>
+<pre><code>常驻：114 技能 × frontmatter ≈ 60 token ≈ 7K
+触发：一次任务 2 个技能 × SKILL.md（≤2K）≈ 4K
+执行：references 按引用读若干（0–5K 浮动）
+对比：把 114 个 SKILL.md 全塞进系统提示 ≈ 230K —— 直接爆窗</code></pre>
+<p>差距的本质（A2 讲过，这里用 Easel 的真实数字）：常驻成本被压到<strong>索引级</strong>，
+正文成本按<strong>用量</strong>付。这也是"敢做 114 个技能"的底气——A2 的算术在真实仓库的验证。</p>
+
+<h2>四、规范怎么被执行（不是靠自觉）</h2>
+<p>scripts/validate_skills.py 全库校验：frontmatter 合法性、相对链接、内联资源引用、
+产物目录布局（禁止根目录散文件、禁止泛名项目目录、系统目录必须 _ 前缀）；
+另一个脚本 validate_skill_commands.py 解析 SKILL 里的命令、对照脚本 argparse
+检查<strong>参数漂移</strong>（文档写了 --foo 而脚本没有 = 报错）。<strong>规范 CI 化</strong>是
+文档类工程和代码工程的分水岭——写下来的规则没有守护就是许愿。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：description 写成文档摘要。</strong>"本技能用于内容创作"——路由不了任何东西；
+要写触发场景原话和边界。<strong>坑 2：SKILL.md 里贴大段参考知识。</strong>应该进 references/
+按需读，正文只留流程。<strong>坑 3：脚本参数改了文档不改。</strong>没校验脚本的仓库必患此病——
+参数漂移让 agent 照文档调用必然失败。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>任选一轮真实任务（如"写小红书笔记并发布"），列出：哪些内容常驻、哪些触发加载、
+哪些执行中才读、哪些永不进 prompt。算出总 token 构成讲给我听。</p>
+<p><strong>一手源：</strong><code>docs/SKILL-SPEC.md</code>（v0.3）+ <code>scripts/validate_skills.py</code> 看规范如何被 CI 化执行。</p>
+
+<footer class="nav">
+  <a href="0009-l05-persona-injection.html">← L05</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0011-l07-shell-vs-script.html">L07 薄壳与厚脚本</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 114 个技能常驻上下文的部分是什么？",
+  opts: ["frontmatter 的名字与描述", "SKILL.md 的执行流程正文", "scripts 里的脚本源代码"],
+  answer: 0,
+  why: "frontmatter 做路由常驻；SKILL.md 触发才加载；scripts 永不进 prompt，只在执行时被调用。"
+});
+Quiz.render("q2", {
+  q: "2. 技能 description 里写「XX 场景请找别的技能」是为了？",
+  opts: ["划清边界帮助正确路由", "谦虚地推卸自己的职责", "满足文档规范的格式要求"],
+  answer: 0,
+  why: "负空间也是路由信息：明确'不是我'才能让相邻技能被正确触发。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

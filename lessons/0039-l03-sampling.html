@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L3 · 采样与参数</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第一部分 LLM · L3</div>
+  <h1>采样与参数：控制模型的"性格旋钮"</h1>
+  <p class="src">20 min · temperature、top-p、logprobs、max_tokens、seed——每个旋钮的机理与 agent 场景的默认答案</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L2」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>模型每步是在一个<strong>概率分布</strong>上抽签，参数决定抽签规则。
+  agent 场景的默认答案几乎总是：<strong>低温度（0–0.3）+ 足够的输出预留 + 明确的停止条件</strong>——
+  你要的是可靠决策，不是灵感；低温度还是评测（A11）的前提——不稳定的输出没法评。
+</div>
+
+<h2>一、基础：采样到底在采什么</h2>
+<p>L1 说模型预测"下一个 token"。精确机制：模型对词表里<strong>每个</strong> token 都给出一个原始分数
+（logit），softmax 把分数变成加起来为 1 的概率分布——"的"可能 35%、"了" 12%、"是" 8%、其余分摊。
+<strong>采样就是从这个分布里抽签</strong>。所有采样参数都是在改抽签规则：改分布形状（temperature）、
+砍候选集（top-p/top-k）、改抽签次数和停止条件（n/stop）。理解了这一句，下面每个参数都不用背——推一遍就出来。</p>
+
+<h2>二、temperature：分布的缩放器</h2>
+<pre><code>T → 0    分布尖锐化：几乎永远选最高概率 token（贪心）——确定、稳定、可能复读
+T = 0.2  高概率仍占优，偶有变化——agent 的常用区间
+T = 1.0  原始分布——模型"本色"
+T = 1.5+ 分布拉平：低概率 token 频繁中标——发散、冒险、易胡说</code></pre>
+<p>为什么 agent 要低温度？三个工程理由：<strong>① 路由一致性</strong>——温度高时"这个任务用哪个技能"
+今天选 A 明天选 B，用户感知为"不稳定"；<strong>② 评测前提</strong>——A11 的评测要求可复现，
+温度高的系统跑两遍结果不同，评测得分是噪音；<strong>③ 错误率放大</strong>——十步循环里每步
+3% 的随机失误率，全程至少错一次的概率近 1/4；低温度把每步失误压到最小。
+注意 T=0 也不是严格确定（浮点/批处理微小差异），但工程上可当确定用。</p>
+
+<h2>三、top-p / top-k：砍候选集的刀</h2>
+<p><strong>top-p</strong>（nucleus）：只在<strong>累积概率达到 p 的最小集合</strong>里抽——
+分布本来就尖时候选少，分布平时候选多，<strong>自适应</strong>；top-k 则固定保留 k 个候选，不分青红皂白。
+实践纪律：<strong>temperature 和 top-p 只动一个</strong>——两个都拧会互相干扰且无法归因（A13 同款归因纪律）。
+默认组合参考：agent 决策/结构化输出 T=0–0.3；文案创作 T=0.7–1.0；brainstorm T=0.8–1.2。</p>
+
+<h2>四、logprobs：模型的"自信度仪表"</h2>
+<p>请求时开 <code>logprobs</code>，响应会附带每个位置 top 候选的对数概率——这是<strong>模型的自信度仪表</strong>：
+最高候选的 logprob 接近 0（概率接近 1）= 模型很确定；几个候选概率接近 = 模型在犹豫。
+工程用途：① <strong>低自信度触发兜底</strong>（分类任务置信度低 → 转人工或换提示重问）；
+② <strong>抽取式任务的定位校验</strong>；③ 离线分析哪些输入让模型犹豫。多数人不知道这个旋钮——
+它把"模型觉得靠谱吗"从玄学变成了可读数。</p>
+
+<h2>五、输出控制：max_tokens、stop、seed</h2>
+<p><strong>max_tokens</strong>：输出上限。与 L2 联动——设太少会把 JSON 生成到一半截断
+（结构化解析失败的隐形杀手）；设大只是上限，不会多花钱（按实际用量计费）。
+<strong>stop</strong>：停止序列，模型生成到该字符串立即停——经典用法是 <code>"\nUser:"</code>
+防止模型自导自演接下来的对话。<strong>seed</strong>：请求级随机种子，provider"尽力而为"地复现——
+跨模型版本不保证，所以<strong>别拿 seed 当测试的唯一手段</strong>，评测要靠统计（A11）。
+<strong>reasoning effort / thinking 档位</strong>：推理模型专用（L5），控制思考 token 预算——
+简单任务降档省大量 thinking token。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：agent 用默认温度（常为 1.0）。</strong>路由抖动、评测不可复现都是症状——先降温再谈稳定。<br>
+<strong>坑 2：temperature 和 top-p 一起调。</strong>归因灾难：效果变了不知道是谁的功劳。<br>
+<strong>坑 3：把温度当质量旋钮。</strong>温度改变的是<strong>分布形状</strong>不是知识——降温度治不稳定，
+不治幻觉（错的依然自信地错，L5）。<br>
+<strong>坑 4：忽略 logprobs。</strong>唯一免费的自信度信号，质检和兜底都用得上。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>你的 agent 有"给文案打分"的工具调用和"生成 5 个备选标题"的创作步骤——一个 agent 两种任务，
+温度分别配多少、为什么？再加一题：打分结果想按置信度做"低分转人工"，用本课哪个机制实现？
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0038-l02-tokens.html">← L2</a> · 下一课：<a href="0040-l04-messages.html">L4 消息协议与角色</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. agent 决策场景的推荐温度区间是？",
+  opts: ["0 到 0.3 之间", "0.7 到 1.0 之间", "1.2 到 1.5 之间"],
+  answer: 0,
+  why: "低温度换一致性与可测性：路由抖动、评测不可复现都是温度过高的症状。"
+});
+Quiz.render("q2", {
+  q: "2. 模型对某次分类的最高候选 logprob 很低，说明？",
+  opts: ["模型在犹豫可做兜底", "模型非常确定答案", "API 出现了计费错误"],
+  answer: 0,
+  why: "logprob 接近 0 才是确定；几个候选接近=犹豫——低自信度触发人工兜底是标准用法。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

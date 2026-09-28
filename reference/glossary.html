@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>术语表 · 全课程通用</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+.g { font-size: 0.92rem; }
+.g td:first-child { white-space: nowrap; font-weight: 600; width: 9rem; }
+.g h2 { margin-top: 2rem; }
+</style>
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 工具页</div>
+  <h1>术语表</h1>
+  <p class="src">课程里所有黑话的一行解释 · 按主题分组 · 读到不认识的词随时回来查</p>
+</header>
+
+<h2>模型层（L1–L7）</h2>
+<table class="g">
+<tr><td>token</td><td>模型处理文本的最小单位——一个字、半个词或一个符号。模型读写的都是 token 不是字符。</td></tr>
+<tr><td>上下文窗口</td><td>模型一次能"看到"的 token 总量上限。窗口 = 工作记忆，装不下就得压缩或检索。</td></tr>
+<tr><td>system prompt</td><td>排在消息最前、优先级最高的常驻指令（人格+规则）。是强偏好不是安全边界。</td></tr>
+<tr><td>messages</td><td>发给模型的消息数组，每条有 role（system/user/assistant/tool）和内容。</td></tr>
+<tr><td>聊天模板</td><td>provider 把 messages 数组拼成带特殊标记（如 &lt;|user|&gt;）纯文本的转换层。</td></tr>
+<tr><td>采样 / temperature</td><td>模型从概率分布里抽下一个 token 的过程；温度控制分布尖锐度——低=稳定，高=发散。</td></tr>
+<tr><td>top-p</td><td>只在累积概率达到 p 的最小候选集里抽签，自适应砍候选。</td></tr>
+<tr><td>logprobs</td><td>响应附带的候选概率对数值——模型自信度仪表，接近 0 = 很确定。</td></tr>
+<tr><td>幻觉</td><td>模型自信地生成不存在的信息。本质是补全不是检索，无法根治只能缓解。</td></tr>
+<tr><td>ICL / few-shot</td><td>上下文学习：给几个示例模型就当场模仿——出了上下文就忘，示例的错误也会被模仿。</td></tr>
+<tr><td>CoT / 推理模型</td><td>思维链：先逐步推理再作答。推理模型（o 系/R1）把思考内化，按 thinking token 计费。</td></tr>
+<tr><td>prompt cache</td><td>provider 按前缀匹配的缓存：开头稳定且一致的部分约 1/10 价。可变内容必须放后面。</td></tr>
+<tr><td>function calling</td><td>模型输出结构化 JSON 声明"想调什么工具+参数"，执行永远在你的代码里。</td></tr>
+<tr><td>JSON Schema</td><td>用 JSON 描述数据结构（字段/类型/必填）的规范，用来约束模型参数和输出。</td></tr>
+</table>
+
+<h2>Agent 层（A1–A17）</h2>
+<table class="g">
+<tr><td>agent</td><td>LLM 在循环里自主决定调用哪些工具，直到达成目标。与 workflow 的区别：下一步由模型现场决定。</td></tr>
+<tr><td>harness</td><td>模型外的运行时容器：loop、会话持久化、流式、工具基建、并发隔离全是它的脏活。</td></tr>
+<tr><td>agent loop</td><td>感知→决策→行动的循环。三条铁律：失败是消息、历史只追加、必须可中断。</td></tr>
+<tr><td>stopReason</td><td>模型结束一轮时的原因码：toolUse（要用工具）/stop（答完了）/length（截断）/error/aborted。</td></tr>
+<tr><td>工具（tool）</td><td>暴露给模型的可执行函数，schema 是模型的"感官"。</td></tr>
+<tr><td>MCP</td><td>Model Context Protocol：把外部工具服务器按统一协议挂进 agent 的标准。</td></tr>
+<tr><td>Skill / 技能</td><td>markdown 写的能力包：SKILL.md（流程说明书）+ references（知识）+ scripts（脚本），按需加载。</td></tr>
+<tr><td>frontmatter</td><td>markdown 文件顶部两行 --- 之间的元数据块。技能的 frontmatter 常驻做路由。</td></tr>
+<tr><td>上下文工程</td><td>决定"每轮让模型看到什么"的学问。四原则：预算有限、稳定前缀、渐进披露、蒸馏不搬运。</td></tr>
+<tr><td>compaction</td><td>上下文快满时 LLM 生成摘要、以追加条目方式压缩历史，然后无缝续跑。不是停止。</td></tr>
+<tr><td>transcript</td><td>会话的完整历史文件（jsonl 格式，只追加不重写）。</td></tr>
+<tr><td>jsonl</td><td>每行一个 JSON 对象的文本格式，可无限追加，崩溃后遗留行还是排查证据。</td></tr>
+<tr><td>记忆分域</td><td>长期记忆按账号/画像各存一份，禁止全局共享——否则并行会话互相串味。</td></tr>
+<tr><td>RAG</td><td>检索增强生成：query→向量化→召回→塞进上下文。无结构大语料的专项手段。</td></tr>
+<tr><td>embedding</td><td>把文本映射成向量的模型，语义相近则向量相近——"怎么退货"和"退款流程"距离近。</td></tr>
+<tr><td>chunk / 分块</td><td>把长文档切成检索单元。边界应与完整语义单元对齐；块烂全烂。</td></tr>
+<tr><td>混合检索</td><td>向量（语义）+ BM25 关键词（精确）两路召回再融合——生产标配。</td></tr>
+<tr><td>rerank</td><td>重排：先宽召回 top-50 求不漏，再用精排模型选出 top-5 求准。</td></tr>
+<tr><td>结构化输出</td><td>让模型输出能被程序消费的 JSON。五级阶梯的顶端：生成后校验+失败重试。</td></tr>
+<tr><td>多智能体</td><td>拆出独立上下文的子代理：换隔离/并行/专门化，代价是协调成本和误差传播。</td></tr>
+<tr><td>提示注入</td><td>用文本冒充指令攻击 agent。间接注入藏在 agent 读取的网页/文件里。无法根治，只能纵深防御。</td></tr>
+<tr><td>fail-closed</td><td>安全机制自身出错时默认拦截（宁可停摆）。可逆的体验功能才可用 fail-open。</td></tr>
+<tr><td>幂等</td><td>同一操作执行两次和一次效果相同。幂等才可自动重试——"发布"不幂等，先对账。</td></tr>
+<tr><td>对账（readback）</td><td>操作后回平台侧查实际结果，不信任界面表现。四档结论，没核实就标 unverified。</td></tr>
+<tr><td>dry-run</td><td>演练模式：列出将要发生的一切但不执行。不可逆操作的默认态，显式授权才真做。</td></tr>
+<tr><td>闸门（guard）</td><td>不可逆动作前的确定性代码检查，命中即硬拦（如 exit 7），prompt 绕不过。</td></tr>
+<tr><td>状态机</td><td>把长流程拆成有限个明确状态，每时刻只处于一个状态，迁移由事件触发。</td></tr>
+<tr><td>文件即协议</td><td>多进程协作不靠 RPC，靠读写约定的状态文件——任意时刻可读、崩溃后留证据。</td></tr>
+<tr><td>钉子文件</td><td>记录首次决策（如选了哪条传输路径）的小文件，之后永远遵守——防中途换边劈叉。</td></tr>
+<tr><td>画像（profile）</td><td>一个账号的完整人设：定位/风格/受众/平台/红线/记忆六个 markdown。</td></tr>
+<tr><td>TURN_REMINDER</td><td>每轮在消息末尾重申的关键反射——对抗长对话里系统提示注意力衰减。</td></tr>
+<tr><td>LLM-as-judge</td><td>让强模型按 rubric 给输出打分。有偏好偏差，需金标集校准+人工终审分歧。</td></tr>
+<tr><td>评测（evals）</td><td>三层：组件级（脚本断言）/轨迹级（步骤检查点）/结果级（最终产物验收）。</td></tr>
+</table>
+
+<h2>工程与 Web 层</h2>
+<table class="g">
+<tr><td>gateway</td><td>常驻网关进程：agent loop 在它里面跑（Easel 用 OpenClaw，loopback:18789）。</td></tr>
+<tr><td>SSE</td><td>Server-Sent Events：浏览器原生的单向事件流通道，服务端可持续推送，比 WebSocket 简单。</td></tr>
+<tr><td>FastAPI</td><td>Python Web 框架：用装饰器把 URL 路径映射到处理函数。</td></tr>
+<tr><td>Playwright</td><td>程序化控制真浏览器的自动化框架——页面 JS 照常跑、Cookie 照常存。</td></tr>
+<tr><td>选择器（selector）</td><td>CSS/XPath 定位页面元素的表达式。发布脚本最易腐的部分，须单点集中管理。</td></tr>
+<tr><td>原子写</td><td>先写临时文件再 rename——任何时刻读者要么看到旧完整版要么新完整版，绝无半个文件。</td></tr>
+<tr><td>markdown</td><td>纯文本排版格式：# 标题、**加粗**、- 列表。技能和画像全用它——人能读，模型也能读。</td></tr>
+<tr><td>symlink</td><td>软链接：指向另一目录的快捷方式。副本会分叉，链接不会。</td></tr>
+</table>
+
+<footer class="nav">
+  <a href="syllabus.html">← 返回大纲</a> · <a href="../lessons/0000-start-here.html">第 0 课·开始这里</a><br>
+  发现缺词或解释不清，随时回对话告诉老师。
+</footer>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

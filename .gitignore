@@ -1,0 +1,9 @@
+# 教学工作区内部文件（不发布）
+MISSION.md
+NOTES.md
+RESOURCES.md
+learning-records/
+.video_agent/
+
+# 系统文件
+.DS_Store

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L02 · 第一条消息的旅程</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M1 项目本体 · L02</div>
+  <h1>第一条消息的旅程：<code>easel skill</code> 到底做了什么</h1>
+  <p class="src">45 min · 精读 easel/cli.py(207行) + commands/skill.py(171行) + openclaw_cmd.py(63行) + timeouts.py(13行)</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L01」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>CLI 是<strong>薄壳</strong>——<code>easel skill</code> 全部工作只是
+  <strong>拼一条消息发给 agent</strong>。真正读 SKILL.md、调脚本、产出文件的是 OpenClaw 里的 agent。
+  理解这一点，三入口（chat/web/skill）的代码就都通了。
+</div>
+
+<h2>一、基础：为什么 CLI 可以这么薄（薄壳的架构理由）</h2>
+<p>直觉上 CLI 应该"执行"用户要的事——但 Easel 的 CLI 刻意不做任何执行。
+原因在 L01 的发现：Easel 没有 loop、没有模型调用代码，<strong>执行主体是 gateway 里的 agent</strong>。
+CLI 的全部价值是三件事：<strong>选画像 → 拼消息 → 交给 agent</strong>。薄壳不是偷懒，
+是 A17 原则的体现：入口层（业务层的一部分）保持 harness 无关，重活全在 harness 层。</p>
+<p>薄壳带来一个漂亮的推论：<strong>三个入口（chat/web/skill）行为必然一致</strong>——
+因为它们拼的是同一种消息、走同一个 agent。如果 CLI 自己实现一套执行逻辑，
+三入口就会各自漂移（超时不一样、画像注入不一样）——Easel 历史上真出过这问题
+（timeouts.py 的 docstring 自述：此前三处各写各的，skill=900s、web=300s、cli=7200s，
+同一任务经不同入口被不同超时掐断）。收敛到单一真相源后才一致。</p>
+
+<h2>二、调用链全景（逐行走读）</h2>
+<pre><code>easel skill social-content -i "写条微博" -p 我的账号
+ └ easel/commands/skill.py
+    ① 找 skills/openclaw/social-content/SKILL.md（自动补 skill- 前缀）
+    ② _resolve_input：文本直接传；图片/音视频只传文件路径
+    ③ 拼消息 = persona_prefix(画像) + "请执行 /social-content" + 输入
+    ④ openclaw --profile easel agent
+         --session-key agent:main:skill-&lt;毫秒时间戳&gt;
+         --timeout-ms 7200_000        ← timeouts.py TIMEOUT_PRODUCE
+    ⑤ stdout 过滤 ANSI 色码和日志行，打印 agent 输出</code></pre>
+<p>逐站细看：<strong>①</strong> 找不到时自动补 <code>skill-</code> 前缀——用户体验细节
+（用户记不住哪些技能带前缀），一行代码消除一类"技能不存在"错误。
+<strong>②</strong> 二进制文件（图/音视频）不塞进消息——只传<strong>路径</strong>，
+agent 自己按路径读文件（消息是文本协议，塞 base64 是窗口杀手，L2）。<strong>③</strong>
+画像注入用 L05 的 persona_prefix——三入口共用同一函数（单一真相源again）。<strong>④</strong>
+session-key 带毫秒时间戳：每次 <code>easel skill</code> 是独立会话，不与 chat 混。<strong>⑤</strong>
+过滤 ANSI 色码——gateway 的输出带终端色码，直接透传会污染非终端场景。</p>
+
+<h2>三、三个"为什么"（精读时找答案）</h2>
+<p><strong>① 为什么 openclaw_cmd.py 优先 <code>[node, /path/to/openclaw.mjs]</code> 而不是 PATH 里的可执行文件？</strong><br>
+Windows 的 openclaw 命令是 <code>.cmd</code> shim（批处理转接器），CreateProcess 跑不了它，
+且多行消息参数会被截断。直接找 .mjs 入口用 node 跑 = 跨平台确定行为。63 行的模块解决一个
+平台差异问题——<strong>每个坑一个专属小模块</strong>，是 Easel 工程风格的缩影。</p>
+<p><strong>② 为什么超时常量单独放 timeouts.py（13 行）？</strong><br>
+13 行的文件看起来"小题大做"，但 docstring 里写着事故史：三入口各写各的超时导致行为不一致。
+收敛后一处改全生效。<strong>常量的价值不在少，在"只有一份"</strong>。</p>
+<p><strong>③ 为什么 skill.py 不自己执行脚本？</strong><br>
+执行主体是 agent：它读 SKILL.md 决定流程（哪个脚本、什么参数、失败怎么办）。
+CLI 若抢跑，agent 的编排智能就被短路了——SKILL.md 里那些"先 check 再 plan 再 publish"
+的流程纪律全部失效。让专家（agent）干编排，让脚本干执行，CLI 只当传令兵。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：在 CLI 里复刻 agent 逻辑。</strong>"快速路径"绕过 agent 直接调脚本——
+短期快，长期三入口行为分裂。<strong>坑 2：消息里塞二进制。</strong>文件只传路径。<strong>坑 3：
+超时魔法数字散落。</strong>每个 spawn 点自己写 7200——改一次漏三处。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验</h2>
+<p>对着源码说出：一条 <code>easel skill</code> 消息从 argv 解析到 agent 收到，中间经过哪 5 步、
+每步在哪个文件。然后回答：<strong>如果 SKILL.md 写的脚本路径错了，报错会出现在哪一层？</strong>
+（提示：CLI 不执行任何脚本——那错误只能在谁那里出现？）</p>
+<p><strong>一手源：</strong><code>easel/commands/skill.py</code> 全文精读（171 行，今天读得完）。</p>
+
+<footer class="nav">
+  <a href="0005-l01-repo-map.html">← L01</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0007-l03-agents-md.html">L03 AGENTS.md 精读</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. easel skill 命令最终把什么发给 agent？",
+  opts: ["一条拼装好的文本消息", "一组编译好的工具调用", "一份复制来的脚本文件"],
+  answer: 0,
+  why: "画像前缀 + 请执行 /<skill> + 输入内容，一条消息而已；读 SKILL.md 和执行都是 agent 的事。"
+});
+Quiz.render("q2", {
+  q: "2. 超时值为什么收进 timeouts.py 单独一个文件？",
+  opts: ["三个入口共用一份真相", "Python 包结构的强制要求", "为了减少代码的总行数"],
+  answer: 0,
+  why: "chat/skill/direct 三入口各写一份会漂移；13 行文件换来行为一致。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

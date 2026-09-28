@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A17 · Harness 选型与自建</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A17 · 前置课毕业桥</div>
+  <h1>Harness 选型与自建：从概念到落地的最后一问</h1>
+  <p class="src">20 min · 先讲清 harness 到底是什么，再讲三条路怎么选、Easel 的真实教训</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A16 浏览器自动化」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>harness 是模型外面的那个"运行时容器"——loop、会话、流式、
+  工具基建全是它的脏活。选型只有三条路：<strong>完整平台 / 脚手架 SDK / 自研</strong>，
+  判据是你要多少定制、多快上线、愿背多少维护。而无论选哪条：
+  <strong>业务资产要做成 harness 无关的</strong>。
+</div>
+
+<h2>一、基础：harness 到底是什么（从一张分层图讲起）</h2>
+<p>一个能用的 agent 系统分三层，每层的职责和"谁在做"完全不同：</p>
+<pre><code>┌─────────────────────────────────────────────┐
+│  业务层：技能、画像、发布逻辑、安全闸门          │ ← 你的差异化，必须自己做
+├─────────────────────────────────────────────┤
+│  Harness 层：loop 循环、会话持久化、流式、       │ ← 通用脏活，可借可造
+│             工具注册、并发隔离、上下文管理        │
+├─────────────────────────────────────────────┤
+│  模型层：LLM API（Claude/GPT/开源模型）         │ ← 永远是别人的
+└─────────────────────────────────────────────┘</code></pre>
+<p><strong>harness = 中间那层</strong>。这个词原意是"马具/挽具"——把马的力气转化为可驾驭的拉力。
+LLM 是那匹马（有蛮力、无状态、不听使唤），harness 是挽具（把模型的每次输出转化为
+受控的工具调用、持久的会话、可见的流式）。回看 A1 那 20 行最小 loop——它其实就是
+一个婴儿 harness。问题在于：从婴儿到能上生产的成人，中间缺的每一样都是脏活：</p>
+<table>
+  <tr><th>能力</th><th>自研要自己写的</th><th>对应前置课</th></tr>
+  <tr><td>loop 本体</td><td>双层循环+停止语义+重试预算</td><td>A3 / 正课 L16</td></tr>
+  <tr><td>会话持久化</td><td>transcript 落盘、断线重放、损坏自愈</td><td>A14 / 正课 L11</td></tr>
+  <tr><td>流式</td><td>token 流分发、事件总线、断线续传</td><td>A15 / 正课 L10</td></tr>
+  <tr><td>上下文管理</td><td>compaction、缓存前缀纪律</td><td>A5 / 正课 L18</td></tr>
+  <tr><td>工具基建</td><td>注册/校验/并行调度/MCP 接入</td><td>A2 / 正课 L17</td></tr>
+  <tr><td>并发隔离</td><td>多会话队列、重入保护</td><td>A9 / 正课 L16</td></tr>
+</table>
+<p>这张表就是"买 vs 造"的价格标签：每一行要么花钱（平台的学习成本与耦合），
+要么花命（自己写自己修）。</p>
+
+<h2>二、三条路的光谱与判据</h2>
+<p><strong>完整平台</strong>（OpenClaw、Claude Code/Agent SDK 这类）：开箱即用全部脏活，
+代价是接受它的概念模型和<strong>私有接口</strong>。适合：快速把业务跑起来、脏活无差异化价值。</p>
+<p><strong>脚手架 SDK</strong>（LangGraph、OpenAI Agents SDK 这类）：给你积木（图/状态机/工具抽象），
+loop 和持久化的拼装权在你。适合：需要定制控制流但不想从零写循环。</p>
+<p><strong>自研</strong>：A1 的 20 行起步，按上表逐行补。适合：loop 本身就是产品核心、
+需求极简、或以学习为目的（毕业设计 L20 就走这条路）。</p>
+<pre><code>决策四问：
+① 我的差异化在 loop 还是在 loop 之上？（之上→借）
+② 会话/流式/工具这些脏活我有能力长期维护吗？（没有→借）
+③ 平台的私有接口我依赖多深？（深→迁移痛，见下）
+④ 团队几个人？能养多少基建？（少→借）</code></pre>
+
+<h2>三、Easel 的选择与代价（真实案例教学）</h2>
+<p>Easel 选了<strong>完整平台</strong>（OpenClaw gateway）：省下了整张脏活表的实现，
+换来的是<strong>深度耦合</strong>——gateway 的 WS RPC、Ed25519 设备签名、raw-stream 文件协议、
+workspace 布局（跨版本还变过，issue #19）……这些私有依赖让"适配更多 harness"
+成为 roadmap 上的待办。两个可抄的缓解：
+<strong>① 收敛接触面</strong>——Easel 把所有 openclaw 调用收敛到 openclaw_cmd.py、
+workspace 解析收敛到 openclaw_workspace.py、超时收敛到 timeouts.py（单一真相源），
+换 harness 时改的不是全仓而是一小撮适配层；
+<strong>② 业务资产 harness 无关</strong>——skills 目录（markdown+脚本）、画像（md 文件）、
+闸门（独立 Python 脚本）本身不依赖任何 harness，理论上可整体搬到别家。
+用第一节的三层图说：<strong>它的业务层被精心设计成"看不见" harness 层</strong>。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：为了一个功能引入整个平台。</strong>只想要流式却背上整套 gateway——
+先看四问，功能可以单独借（脚手架粒度）。<strong>坑 2：自研 loop 不补脏活。</strong>
+20 行 loop 上生产，第一个死法是没有会话恢复，第二个是没有重试预算。
+<strong>坑 3：业务资产长在 harness 上。</strong>工具定义、技能、画像全部用平台私有格式写——
+迁移时资产全废。资产用开放格式（markdown/JSON/std 脚本），harness 只当运行时。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验（前置课毕业桥）</h2>
+<p><strong>综合题：</strong>三个场景各选一条路并说理由——
+① 个人知识库助手（自己用）；② 公司客服 agent（要接工单系统、审计合规）；
+③ 你想验证"技能路由比函数工具省 token"这个想法。
+再答：无论选哪条，你的哪些资产会做成 harness 无关的？
+通过即<strong>前置课全部毕业</strong>，进 <a href="0002-agent-anatomy.html">M1 入门·六件套</a>
+开始正课——你会带着一张完整的知识地图，逐模块核对 Easel 是怎么落这些概念的。</p>
+
+<footer class="nav">
+  <a href="0046-a15-browser.html">← A16 浏览器自动化</a> · 前置课完 ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. Harness 在 agent 系统分层中处于哪一层？",
+  opts: ["模型与业务之间的运行时层", "最上层的业务逻辑层", "最底层的模型推理层"],
+  answer: 0,
+  why: "三层图：模型层（别人的）→ harness 层（借或造的脏活）→ 业务层（你的差异化）。"
+});
+Quiz.render("q2", {
+  q: "2. 「业务资产 harness 无关」的意思是？",
+  opts: ["资产用开放格式存放", "资产不存任何文件系统", "资产必须绑定唯一平台"],
+  answer: 0,
+  why: "技能/画像/闸门用 markdown、JSON、独立脚本等开放格式——harness 只是可替换的运行时。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

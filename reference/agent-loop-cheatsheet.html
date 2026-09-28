@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>速查 · Agent Loop 解剖（OpenClaw/Easel）</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 参考文档</div>
+  <h1>Agent Loop 解剖（速查）</h1>
+</header>
+
+<h2>调用链（每层 file:line 均为源码实证）</h2>
+<pre><code>gateway 收 /v1/chat/completions
+ → agentCommand（按 sessionKey 准入）            src/agents/agent-command.ts:199
+  → runEmbeddedAgent                             run-orchestrator.ts:110
+   → runPreparedEmbeddedLoop                     run-loop.ts:254  while(true) 外层
+    → runEmbeddedAttempt                         run/attempt.ts:64（装配工具+提示词+历史）
+     → Agent.prompt                              agent.ts:444（重入保护：二次调用抛错）
+      → runAgentLoop → runLoop                   agent-loop.ts:68/141/214 ← 主循环</code></pre>
+
+<h2>循环骨架（伪代码）</h2>
+<pre><code>外层 while(true):                        # 重试/compaction/排队消息的宿主
+                                         # 预算：24+8/档案，min 32，max 160 次
+  while (hasMoreToolCalls):              # agentic 主循环
+    ① abort 检查
+    ② pending/steering 消息提交进 transcript
+    ③ streamAgentResponse 调 LLM（流式）
+       流中 toolcall_end → 工具提前入队执行
+    ④ stopReason 判定：
+       toolUse  → 执行工具 → 结果（含 isError）回填 → 继续
+       error/aborted → providerFailed 终止
+       stop      → 看 endTurn / terminate 钩子
+    ⑤ tool results 追加回 context.messages
+    ⑥ turn_end 事件 → prepareNextTurn 钩子（可换模型/思维档）
+  排空 followUp 队列；无新消息 → agent_end</code></pre>
+
+<h2>关键数值与语义</h2>
+<table>
+  <tr><th>项</th><th>值 / 语义</th><th>出处</th></tr>
+  <tr><td>stopReason 词表</td><td><code>stop | length | toolUse | error | aborted</code></td><td class="mono">llm-core/src/types.ts:357</td></tr>
+  <tr><td>继续循环的条件</td><td>还有 tool calls 未消化，或 <code>endTurn===false</code> 续跑</td><td class="mono">agent-loop.ts:317-322</td></tr>
+  <tr><td>工具形态</td><td>进程内函数 <code>execute(id, args, signal)</code>；MCP 工具包装成同形态；串行/并行可配</td><td class="mono">agent-loop.ts:443/498-510</td></tr>
+  <tr><td>工具失败</td><td><strong>不是异常</strong>：<code>isError:true</code> 结果回填给模型，让它自我纠错</td><td class="mono">agent-loop.ts:1140-1147</td></tr>
+  <tr><td>重试预算</td><td>24 基数 +8/档案，min 32 / max 160 次</td><td class="mono">run/helpers.ts:51-54</td></tr>
+  <tr><td>idle 看门狗</td><td>云端 120s / 自托管 300s</td><td class="mono">docs/concepts/agent-loop.md:205</td></tr>
+  <tr><td>compaction 触发</td><td><code>tokens &gt; contextWindow − reserve(16384)</code>，保留最近 20000 tokens</td><td class="mono">compaction.ts:196-199</td></tr>
+  <tr><td>compaction 语义</td><td><strong>不是</strong> stopReason：在 assistant 消息后发生，成功后 <code>continue()</code> 续跑</td><td class="mono">agent-session-prompting.ts:88</td></tr>
+  <tr><td>transcript 持久化</td><td>JSONL→SQLite，<strong>只追加不重写</strong>；compaction 也作为 entry 落盘</td><td class="mono">session-manager-entries.ts:515-530</td></tr>
+  <tr><td>并发隔离</td><td>每会话一个 lane（并发=1）串行；跨会话并行；<code>Agent.prompt</code> 重入直接抛错</td><td class="mono">command-queue.ts:121-126</td></tr>
+</table>
+
+<h2>流式链路与 Easel 集成契约</h2>
+<p>provider 流 → <code>agent-stream-response.ts</code>（text_delta/toolcall_end 事件）→ Agent 事件总线 →
+gateway <code>onAgentEvent</code>。另有一条<strong>旁路</strong>：<code>OPENCLAW_RAW_STREAM=1</code> +
+<code>OPENCLAW_RAW_STREAM_PATH</code> 时，订阅 handler 把 text/thinking delta 和 message_end
+以 JSONL <strong>best-effort</strong> 追加到共享文件（embedded-agent-subscribe.raw-stream.ts:24-52）——
+这就是 Easel tail 的 <code>/tmp/easel-raw-stream.jsonl</code>。每行带 <code>runId/sessionId</code>，
+多会话交错写入时靠 runId 闩锁认领自己的行。</p>
+
+<h2>四条第一性设计（换你建 loop 时照抄）</h2>
+<ol>
+  <li><strong>工具失败是给模型的消息，不是给用户的异常</strong>——isError 回填，模型自我纠错</li>
+  <li><strong>历史只追加不重写</strong>——compaction 也是 entry，可回放、可审计、prompt cache 稳定</li>
+  <li><strong>同会话串行、跨会话并行</strong>——lane 并发 1 + 重入保护，杜绝交错写</li>
+  <li><strong>系统提示词分"稳定前缀 + 可变尾部"</strong>——稳定段在前命中 provider 的 prompt cache</li>
+</ol>
+
+<footer class="nav">
+  相关：<a href="../lessons/0003-agent-loop.html">第 3 课 · Loop 的实现</a> ·
+  <a href="agent-anatomy.html">构造蓝图六件套</a><br>
+  有疑问随时问你的 agent 老师。
+</footer>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

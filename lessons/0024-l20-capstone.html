@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L20 · 毕业实现与复盘</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M7 输出 · L20 · 毕业课</div>
+  <h1>实现最小六件套 agent，并逐件自评</h1>
+  <p class="src">45 min 规划 + 1.5 天实现 · 从读别人到建自己的</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L19」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>毕业不是"写完了"，是<strong>逐件自评通过</strong>——
+  每件套对照 Easel 的对应实现，能说清"我简化了什么、为什么可以简化"。
+</div>
+
+<h2>一、基础：实现顺序有讲究（依赖图决定开工顺序）</h2>
+<p>L19 的六张卡怎么变成代码？不是从卡 1 写到卡 6——<strong>按依赖图开工</strong>：
+loop 是一切的地基（没有它什么都跑不起来）→ 工具其次（loop 要调）→
+技能加载（loop 要按路由读）→ 提示词（首批请求就要）→ 记忆（首批请求就要）→
+闸门（真发前必须有，但可以最后接）。这个顺序保证<strong>每一步结束都有一个能跑的东西</strong>——
+Day 1 上午结束你就有一个"会调工具的 loop"，而不是等六天看到全貌。</p>
+
+<h2>二、三日施工计划（把 1.5 天摊开）</h2>
+<table>
+  <tr><th>时段</th><th>做什么</th><th>完成标志</th></tr>
+  <tr><td>Day1 上午</td><td>loop.py：双层循环 + 工具执行 + isError 回填（A1 的 20 行起步）</td><td>模型能调用一个假工具并自我纠错</td></tr>
+  <tr><td>Day1 下午</td><td>tools.py 2-3 个真工具 + agents.md 规则文件</td><td>能完成一次真实任务（如"读文件并总结"）</td></tr>
+  <tr><td>Day2 上午</td><td>skills/ 路由加载 + memory.md 只追加</td><td>新技能不改内核即可用；跨轮记得事</td></tr>
+  <tr><td>Day2 下午</td><td>guard.py 闸门 + 全链自测 + rubric 自评</td><td>不可逆操作被拦；自评表完成</td></tr>
+</table>
+
+<h2>三、实现清单（约 250 行的骨架分配）</h2>
+<pre><code>loop.py        ~90 行  while: 调模型(OpenAI兼容) → tool_calls → 执行 → 回填
+                       工具失败 isError 回填（不是异常！A3 铁律①）
+                       步数上限 + 超时（铁律③）
+skills/        技能目录 frontmatter 路由 + SKILL.md 触发加载（~40 行）
+agents.md      规则 ≤30 行（抄 Easel 六条的骨架，L03）
+tools.py       2-3 个真实工具（read_file / run_cmd / 你的领域工具，按 A4 设计）
+guard.py       ~40 行 出站扫描：命中密钥模式 → exit 7（L14 fail-closed）
+memory.md      会话记忆文件，只追加（~20 行读写，A6 文件形态）</code></pre>
+<p>对照 C3（现 A1）那 20 行最小 agent：loop.py 是它的成年版（+上限/超时/isError），
+skills/ 是 A2 第三代封装的微缩，guard.py 是 A12 阶梯第 4 级的落点。
+<strong>250 行 = 前置课 24 课 + 正课 20 课的物理压缩包。</strong></p>
+
+<h2>四、调试清单（卡住时按序自查）</h2>
+<p>① <strong>模型不调工具？</strong>看工具 schema——description 是不是含糊（A4），参数是否 required 太多。<br>
+② <strong>调了但参数错？</strong>校验失败有没有回填错误消息（还是直接崩了）？错误消息有没有三要素（A4）。<br>
+③ <strong>循环不停？</strong>停止条件全吗——toolUse 之外 stop 是否正确终止、步数上限有没有生效。<br>
+④ <strong>第二轮就失忆？</strong>历史有没有 append（assistant 消息本身也要入列，L7 坑 1）。<br>
+⑤ <strong>回答质量差？</strong>先打印实际发出的 messages 看——十有八九是上下文组装问题（A5），不是模型笨。</p>
+
+<h2>五、五个必踩的坑（提前避开，每个都连回课程）</h2>
+<p><strong>① 工具失败当异常抛给用户</strong>——应该是 isError 结果回填（A3 铁律①，L17 六站）。<br>
+<strong>② 记忆写全局单文件</strong>——多会话串味，按会话/画像分域（A6 竞态推演，L05）。<br>
+<strong>③ 没有 dry-run</strong>——不可逆操作直接真发（A12 阶梯 3 级，L13 三段式）。<br>
+<strong>④ 系统提示塞满所有能力</strong>——应该 frontmatter 路由 + 按需加载（A2/L06 token 算术）。<br>
+<strong>⑤ 历史重写式截断</strong>——应该摘要追加（A3 铁律②，L18 只追加三重收益）。</p>
+
+<h2>六、复盘 rubric（对照两份基准逐件打分）</h2>
+<table>
+  <tr><th>件套</th><th>自评问题</th><th>对照的 Easel 实现</th></tr>
+  <tr><td>loop</td><td>停止条件齐全吗（error/abort/上限）？工具失败能自我纠错吗？</td><td>agent-loop.ts 三段式（L16）</td></tr>
+  <tr><td>提示词</td><td>常驻层稳定吗（cache 命中）？人格与规则分层了吗？</td><td>四层栈（L04）</td></tr>
+  <tr><td>技能</td><td>新技能不用改内核代码就能加吗？</td><td>SKILL-SPEC 三层加载（L06）</td></tr>
+  <tr><td>分工</td><td>碰环境的事在脚本/工具里，决策在模型里？</td><td>薄壳+厚脚本（L07）</td></tr>
+  <tr><td>记忆</td><td>并发会话安全吗？历史可回放吗？</td><td>画像分域（L05）+ 只追加</td></tr>
+  <tr><td>边界</td><td>闸门 fail-closed 吗？有对账/留痕吗？</td><td>content_guard + readback（L14）</td></tr>
+</table>
+
+<h2>七、出口检验（课程毕业）</h2>
+<p>提交两样：① 可运行代码；② 六件套自评表（每件 ≤3 句，含"简化了什么、为什么可以"）。
+我对照 <a href="https://www.anthropic.com/engineering/building-effective-agents">Building Effective Agents</a>
+与 Easel 源码逐件批改。通过即记入学习档案，这门课就毕业了。</p>
+<p>毕业后去哪：把你的 agent 用起来，遇到的每个真实问题都会对应到课程的某一课——
+那时回来重读那一课，是最高效的进阶。</p>
+
+<footer class="nav">
+  <a href="0023-l19-blueprint.html">← L19</a> · <a href="../reference/syllabus.html">← 返回大纲</a><br>
+  实现中任何卡点，回对话里问老师——毕业设计阶段老师随叫随到。
+</footer>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

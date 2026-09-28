@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>课程大纲 · Agent 构建之道（20 课时 · 全部已开课）</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+.mod { border: 1px solid var(--rule); border-radius: 12px; padding: 1.1rem 1.3rem; margin: 1.4rem 0; background: #fff; }
+.mod h2 { margin: 0 0 0.15rem; border-left: none; padding-left: 0; }
+.mod .anchor { font-size: 0.8rem; color: var(--accent); font-family: "SF Mono", ui-monospace, monospace; margin-bottom: 0.2rem; }
+.mod .meta { font-size: 0.82rem; color: var(--muted); margin-bottom: 0.7rem; }
+.task { display: flex; gap: 0.55rem; align-items: baseline; margin: 0.5rem 0; }
+.task input { transform: translateY(2px); flex: none; }
+.task .no { font-family: "SF Mono", ui-monospace, monospace; font-size: 0.78rem; color: var(--accent); flex: none; width: 2.4rem; }
+.task small { color: var(--muted); }
+.done-text { text-decoration: line-through; color: var(--muted); }
+.tag { font-size: 0.7rem; border: 1px solid var(--rule); border-radius: 4px; padding: 0.05rem 0.4rem; color: var(--muted); white-space: nowrap; }
+</style>
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 总大纲 v3</div>
+  <h1>Agent 构建之道：20 课时</h1>
+  <p class="src">🚪 <a href="../lessons/0000-start-here.html">第 0 课·开始这里（零经验入口）</a> · 📖 <a href="glossary.html">术语表</a> —— 先读这两页<br>7 模块锚定真实代码目录 · 全部课时已生成 · 每课时 = 讲解 + 检索测验 + 出口检验<br>
+  循序渐进：看得见的 → 看得懂的 → 组织层 → 驱动层 → 执行层 → 最深内核 → 亲手建</p>
+</header>
+
+<div class="verdict">
+  <strong>使用方法：</strong>按序点击开课，每课时 45 分钟；测验即时反馈，<strong>出口检验通过才勾选完成</strong>
+  （把检验答案回对话讲给老师听）。概念预备课（0001–0004）保留为前置，可随时回看。
+</div>
+
+<div class="mod">
+<h2>前置课 第一部分 · LLM 基础 <span class="tag">7 课 · L1–L7 · 讲透大脑本身</span></h2>
+<div class="anchor">原理 → 计量约束 → 参数 → 协议 → 边界 → 写法 → 程序接口</div>
+<label class="task"><input type="checkbox" data-key="pl1"><span><span class="no">L1</span><a href="../lessons/0025-c01-llm.html">LLM：大脑长什么样</a> <small>— 下一 token 预测/无状态/只会生成文本</small></span></label>
+<label class="task"><input type="checkbox" data-key="pl2"><span><span class="no">L2</span><a href="../lessons/0038-l02-tokens.html">Token、窗口与成本</a> <small>— tokenizer 手感/窗口三段分配/长对话复利账单</small></span></label>
+<label class="task"><input type="checkbox" data-key="pl3"><span><span class="no">L3</span><a href="../lessons/0039-l03-sampling.html">采样与参数</a> <small>— temperature/top-p/max_tokens；agent 默认低温度</small></span></label>
+<label class="task"><input type="checkbox" data-key="pl4"><span><span class="no">L4</span><a href="../lessons/0040-l04-messages.html">消息协议与角色</a> <small>— 四种角色语义/聊天模板本质/位置效应</small></span></label>
+<label class="task"><input type="checkbox" data-key="pl5"><span><span class="no">L5</span><a href="../lessons/0041-l05-capabilities.html">能力与边界</a> <small>— 知识截止/幻觉机理/ICL/CoT/推理模型</small></span></label>
+<label class="task"><input type="checkbox" data-key="pl6"><span><span class="no">L6</span><a href="../lessons/0042-l06-prompting.html">提示词工程</a> <small>— 五条写法/迭代纪律；第一部分收官课</small></span></label>
+<label class="task"><input type="checkbox" data-key="pl7"><span><span class="no">L7</span><a href="../lessons/0026-c02-function-calling.html">Function Calling 协议</a> <small>— 完整往返逐字段走读；通往 agent 的桥</small></span></label>
+</div>
+
+<div class="mod">
+<h2>前置课 第二部分 · Agent 基础 <span class="tag">17 课 · A1–A17 · 讲透怎么用大脑干活</span></h2>
+<div class="anchor">是什么 → 能力 → 循环 → 工具设计 → 上下文 → 记忆 → 结构化 → 检索 → 多体 → 模式 ｜ 评测 → 安全 → 韧性 → 规划 → 交互 → 浏览器 → harness</div>
+<label class="task"><input type="checkbox" data-key="pa1"><span><span class="no">A1</span><a href="../lessons/0027-c03-what-is-agent.html">Agent 是什么</a> <small>— 公式 + 三邻居 + 20 行最小 agent</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa2"><span><span class="no">A2</span><a href="../lessons/0028-c04-tool-mcp-skill.html">Tool / MCP / Skill</a> <small>— 三代封装与 token 危机</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa3"><span><span class="no">A3</span><a href="../lessons/0030-c06-loop.html">循环</a> <small>— agentic loop 本质与三条铁律</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa4b"><span><span class="no">A4</span><a href="../lessons/0048-tool-design.html">工具设计</a> <small>🆕 — 粒度/参数/返回值/幂等/错误消息五面</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa4"><span><span class="no">A5</span><a href="../lessons/0032-c08-context-engineering.html">上下文工程</a> <small>— token 账单/稳定前缀/渐进披露/蒸馏</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa5"><span><span class="no">A6</span><a href="../lessons/0029-c05-memory.html">记忆</a> <small>— 四形态/沉淀判据/作用域陷阱</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa7"><span><span class="no">A7</span><a href="../lessons/0033-c09-structured-output.html">结构化输出</a> <small>— 五级可靠性阶梯 + 校验重试代码</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa6"><span><span class="no">A8</span><a href="../lessons/0034-c10-rag.html">RAG 与检索</a> <small>— 向量召回 vs agent 自己读；chunking</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa8"><span><span class="no">A9</span><a href="../lessons/0035-c11-multi-agent.html">多智能体</a> <small>— 隔离收益/协调代价/成本账单</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa9"><span><span class="no">A10</span><a href="../lessons/0031-c07-patterns.html">常见设计模式</a> <small>— 六模式 + Easel 对应物；模式收束</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa10"><span><span class="no">A11</span><a href="../lessons/0036-c12-evals.html">评测与可观测</a> <small>— 组件/轨迹/结果三层 + judge 校准</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa11"><span><span class="no">A12</span><a href="../lessons/0037-c13-safety.html">Agent 安全基础</a> <small>— 注入剧本 + 五级防御阶梯；安全关</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa13"><span><span class="no">A13</span><a href="../lessons/0044-a13-resilience.html">错误处理与韧性</a> <small>— 失败四层/重试红线/回退熔断/fail-closed</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa12"><span><span class="no">A14</span><a href="../lessons/0043-a12-planning.html">规划与长任务</a> <small>— manifest 落盘/断点续跑/里程碑粒度</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa14"><span><span class="no">A15</span><a href="../lessons/0045-a14-agent-ux.html">人机交互与信任</a> <small>— 反馈梯度/先查再问/少而重的确认/信任校准</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa15"><span><span class="no">A16</span><a href="../lessons/0046-a15-browser.html">浏览器自动化 agent</a> <small>— 登录态资产/选择器治理/对账验证；M5 概念版</small></span></label>
+<label class="task"><input type="checkbox" data-key="pa16"><span><span class="no">A17</span><a href="../lessons/0047-a16-harness.html">Harness 选型与自建</a> <small>— 三路判据 + Easel 案例教训；前置课毕业桥</small></span></label>
+</div>
+
+<div class="mod">
+<h2>M1 · 项目本体 <span class="tag">★ · 入门 + 2 课时</span></h2>
+<div class="anchor">锚定：仓库根 + easel/（CLI 包）</div>
+<label class="task"><input type="checkbox" data-key="l00"><span><span class="no">入门</span><a href="../lessons/0002-agent-anatomy.html">六件套构造蓝图</a> <small>— 前置课 → Easel 的桥；读仓库六问</small></span></label>
+<label class="task"><input type="checkbox" data-key="l01"><span><span class="no">L01</span><a href="../lessons/0005-l01-repo-map.html">给仓库画地图</a> <small>— 五层工作流 ↔ 目录映射；出口：手画数据流图</small></span></label>
+<label class="task"><input type="checkbox" data-key="l02"><span><span class="no">L02</span><a href="../lessons/0006-l02-first-message.html">第一条消息的旅程</a> <small>— easel skill 只是拼消息；出口：五步调用链</small></span></label>
+</div>
+
+<div class="mod">
+<h2>M2 · 大脑层：提示词栈 <span class="tag">★★ · 3 课时</span></h2>
+<div class="anchor">锚定：openclaw/workspace/ + easel/persona.py</div>
+<label class="task"><input type="checkbox" data-key="l03"><span><span class="no">L03</span><a href="../lessons/0007-l03-agents-md.html">AGENTS.md 精读</a> <small>— 六条规则 × 六类事故；出口：复述 + 反例</small></span></label>
+<label class="task"><input type="checkbox" data-key="l04"><span><span class="no">L04</span><a href="../lessons/0008-l04-soul-stack.html">SOUL 与四层栈</a> <small>— 刻意不写的设计；出口：三处下放去向</small></span></label>
+<label class="task"><input type="checkbox" data-key="l05"><span><span class="no">L05</span><a href="../lessons/0009-l05-persona-injection.html">画像注入机制</a> <small>— 内联 vs 全局文件竞态；作业：写自己的 AGENTS/SOUL</small></span></label>
+</div>
+
+<div class="mod">
+<h2>M3 · 能力层：技能系统 <span class="tag">★★ · 3 课时</span></h2>
+<div class="anchor">锚定：skills/openclaw/ + skills/shared/</div>
+<label class="task"><input type="checkbox" data-key="l06"><span><span class="no">L06</span><a href="../lessons/0010-l06-skill-spec.html">SKILL-SPEC 三层加载</a> <small>— token 经济学；出口：算一轮对话的构成</small></span></label>
+<label class="task"><input type="checkbox" data-key="l07"><span><span class="no">L07</span><a href="../lessons/0011-l07-shell-vs-script.html">薄壳与厚脚本</a> <small>— 碰环境归脚本；出口：给新能力划边界</small></span></label>
+<label class="task"><input type="checkbox" data-key="l08"><span><span class="no">L08</span><a href="../lessons/0012-l08-skill-sync.html">技能同步与调用链</a> <small>— issue #19 与五级退化；作业：写一个技能</small></span></label>
+</div>
+
+<div class="mod">
+<h2>M4 · 驱动层：Web 工作台 <span class="tag">★★★ · 3 课时</span></h2>
+<div class="anchor">锚定：web/app.py（4062 行）</div>
+<label class="task"><input type="checkbox" data-key="l09"><span><span class="no">L09</span><a href="../lessons/0013-l09-web-overview.html">后端鸟瞰</a> <small>— 9 组端点地图 + 双锁；出口：画端点分组</small></span></label>
+<label class="task"><input type="checkbox" data-key="l10"><span><span class="no">L10</span><a href="../lessons/0014-l10-streaming.html">对话流式链路</a> <small>— supervisor/forward 分离 + runId 闩锁；出口：画流式图</small></span></label>
+<label class="task"><input type="checkbox" data-key="l11"><span><span class="no">L11</span><a href="../lessons/0015-l11-session-engineering.html">会话工程</a> <small>— uuid5 钉 transcript + session_heal；出口：设计断线恢复</small></span></label>
+</div>
+
+<div class="mod">
+<h2>M5 · 执行层：发布与安全 <span class="tag">★★★ · 4 课时</span></h2>
+<div class="anchor">锚定：skills/shared/scripts/（发布引擎与闸门）</div>
+<label class="task"><input type="checkbox" data-key="l12"><span><span class="no">L12</span><a href="../lessons/0016-l12-publish-engine.html">发布引擎与登录状态机</a> <small>— 文件即协议；出口：抖音登录时序图</small></span></label>
+<label class="task"><input type="checkbox" data-key="l13"><span><span class="no">L13</span><a href="../lessons/0017-l13-xhs-publish.html">xhs_publish 精读</a> <small>— 消灭假成功三段式；出口：三段各防什么</small></span></label>
+<label class="task"><input type="checkbox" data-key="l14"><span><span class="no">L14</span><a href="../lessons/0018-l14-guards.html">fail-closed 与对账</a> <small>— exit 7 + 四档结论；出口：给转账设计证据链</small></span></label>
+<label class="task"><input type="checkbox" data-key="l15"><span><span class="no">L15</span><a href="../lessons/0019-l15-human-pace.html">拟人化与风控</a> <small>— 克制的反检测；出口：评论回复的安全分级</small></span></label>
+</div>
+
+<div class="mod">
+<h2>M6 · 内核层：OpenClaw loop <span class="tag">★★★★ · 3 课时</span></h2>
+<div class="anchor">锚定：openclaw-src/packages/agent-core/（TypeScript）</div>
+<label class="task"><input type="checkbox" data-key="l16"><span><span class="no">L16</span><a href="../lessons/0020-l16-loop-reading.html">loop 骨架精读</a> <small>— 带任务单读 214-436；出口：手写伪代码</small></span></label>
+<label class="task"><input type="checkbox" data-key="l17"><span><span class="no">L17</span><a href="../lessons/0021-l17-tool-execution.html">工具执行与流式</a> <small>— tool call 六站旅程 + 流中提前执行；出口：失败调用数据流</small></span></label>
+<label class="task"><input type="checkbox" data-key="l18"><span><span class="no">L18</span><a href="../lessons/0022-l18-compaction.html">compaction 与持久化</a> <small>— 只追加不重写；出口：三分钟讲时序</small></span></label>
+</div>
+
+<div class="mod">
+<h2>M7 · 输出：毕业设计 <span class="tag">★★★★★ · 2 课时</span></h2>
+<div class="anchor">锚定：从零新建（你自己的项目）</div>
+<label class="task"><input type="checkbox" data-key="l19"><span><span class="no">L19</span><a href="../lessons/0023-l19-blueprint.html">六件套蓝图</a> <small>— 六张决策卡；出口：设计文档评审</small></span></label>
+<label class="task"><input type="checkbox" data-key="l20"><span><span class="no">L20</span><a href="../lessons/0024-l20-capstone.html">实现与复盘</a> <small>— 250 行最小 agent + rubric 自评；另含约 1.5 天课外实现；毕业提交</small></span></label>
+</div>
+
+<div class="mod">
+<h2>附录 · 选读 <span class="tag">2 篇</span></h2>
+<label class="task"><input type="checkbox" data-key="app1"><span><span class="no">选读</span><a href="../lessons/0001-local-vs-cloud-agent.html">部署形态判定法</a> <small>— 端侧 vs 云端 5 组件拆解，与 M6 搭配</small></span></label>
+<label class="task"><input type="checkbox" data-key="app2"><span><span class="no">选读</span><a href="../lessons/0004-reading-path.html">源码精读路线图</a> <small>— 五站法 + 读法三原则，进 M6 前值得一读</small></span></label>
+</div>
+
+<footer class="nav">
+  配套速查：<a href="agent-anatomy.html">六件套</a> · <a href="agent-loop-cheatsheet.html">loop 解剖</a> ·
+  <a href="agent-deployment-taxonomy.html">部署形态</a> ·
+  源码阅读补充：<a href="reading-roadmap.html">总阅读路线图</a><br>
+  本地代码：easel-repo 与 openclaw-src 均在 ~/Code/Projects/ 下，只读精读。
+</footer>
+
+<script src="../assets/checklist.js"></script>
+<script>
+Checklist.init("syllabus-v3");
+document.addEventListener("checklist:change", function () {
+  document.querySelectorAll(".task").forEach(function (t) {
+    var cb = t.querySelector("input");
+    var span = t.querySelector("span");
+    if (span) span.classList.toggle("done-text", cb.checked);
+  });
+});
+document.dispatchEvent(new CustomEvent("checklist:change"));
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

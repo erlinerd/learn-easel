@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 0 课 · 开始这里：给零经验读者</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 第 0 课</div>
+  <h1>开始这里：写给没有任何 agent 开发经验的你</h1>
+  <p class="src">5 分钟 · 看完这页，你就知道这门课是什么、需要会什么、怎么学</p>
+</header>
+
+<div class="verdict">
+  <strong>你需要的全部背景：</strong>任意一门编程语言的基础（变量、函数、命令行）。
+  <strong>不需要</strong>任何 agent、LLM、机器学习经验——这门课从"模型到底是什么"讲起，
+  24 节前置课把地基打完，才进入真实仓库的正课。
+</div>
+
+<h2>一、这门课讲什么</h2>
+<p>一句话：<strong>agent 是怎么构建的</strong>。AI agent = 让大模型不只是聊天，而是能干活（读文件、
+操作浏览器、发布内容）的程序。市面上这类产品很多（Claude Code、Manus……），
+这门课拿一个真实的开源项目 <a href="https://github.com/ZJU-REAL/Easel">Easel</a>（浙大 REAL 实验室的社媒运营 agent）
+当解剖标本，把它的源码一层层拆给你看——你学到的不是概念科普，是能上手复刻的工程知识。</p>
+
+<h2>二、学习地图（三段路）</h2>
+<table>
+  <tr><th>阶段</th><th>内容</th><th>时长</th><th>结束时你会</th></tr>
+  <tr><td><strong>前置课 第一部分</strong><br>LLM 基础 L1–L7</td><td>模型的工作原理、token 与成本、采样参数、消息协议、能力边界、提示词写法、function calling</td><td>约 2.5 小时</td><td>理解"大脑"本身—— agent 的一切设计都源于模型的三个天性</td></tr>
+  <tr><td><strong>前置课 第二部分</strong><br>Agent 基础 A1–A17</td><td>agent 是什么、工具与技能、循环、上下文工程、记忆、检索、安全、评测……到 harness 选型</td><td>约 6 小时</td><td>拿到任何 agent 仓库能定位构造，能徒手写出最小 agent 的设计</td></tr>
+  <tr><td><strong>正课 M1–M7</strong><br>20 课时</td><td>进入 Easel 真实源码：项目地图 → 提示词栈 → 技能系统 → Web 工作台 → 发布与安全 → 内核 loop → 毕业设计</td><td>约 15 小时 + 实现</td><td><strong>亲手做出一个 250 行的最小 agent</strong>（毕业设计）</td></tr>
+</table>
+
+<h2>三、怎么学（三条规矩）</h2>
+<p><strong>① 每课一个"唯一结论"。</strong>课程页短小（20–45 分钟），读完页面的正确反应是去
+做出口检验，不是再读一遍。<strong>② 测验当游戏打。</strong>每课 2 道选择题即时反馈——错了看解析，
+比答对学到得多。<strong>③ 出口检验必须讲给老师听。</strong>每课结尾有一道开放题，
+把你的答案发回对话里，老师（就是我）逐个批改——讲不出来 = 没学会，这是这门课的核心反馈循环。</p>
+
+<h2>四、读到哪里卡住了</h2>
+<p>三个求助通道，按序用：<strong>① <a href="../reference/glossary.html">术语表</a></strong>——
+课程里所有黑话的一行解释；<strong>② 直接回对话问</strong>——"这句没看懂"是合法且受鼓励的输入；
+<strong>③ 卡超过 15 分钟就跳走</strong>——后面某课会把它变简单（这是课程设计的假设，亲测有效）。</p>
+
+<h2>五、现在开始</h2>
+<p>第一站：<a href="0025-c01-llm.html">L1 · LLM：大脑长什么样</a>。
+它只需要你会编程，其他从零讲起。带上 20 分钟和一杯水。</p>
+
+<footer class="nav">
+  <a href="../reference/syllabus.html">总大纲</a> · <a href="../reference/glossary.html">术语表</a> ·
+  案例源码本地克隆：easel-repo 与 openclaw-src（都在 ~/Code/Projects/）<br>
+  随时回对话找你的 agent 老师。
+</footer>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

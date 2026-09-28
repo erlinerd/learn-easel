@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L1 · LLM：agent 的大脑长什么样</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第一部分 LLM · L1</div>
+  <h1>LLM：agent 的大脑长什么样</h1>
+  <p class="src">20 min · 理解大脑的三个特性，才能理解 agent 为什么长成那样</p>
+</header>
+
+<p class="src">🎒 预备知识：无——你只需要基础编程；其余概念本课从零讲起（入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>LLM 是一台<strong>无状态的文本补全机</strong>——每次调用只看你给的
+  messages，不记得上一轮。agent 的一切设计（记忆、循环、工具）都是在给这台机器
+  <strong>补上它没有的东西</strong>。
+</div>
+
+<h2>一、它到底在干什么：下一 token 预测</h2>
+<p>剥掉神秘感，LLM 每次做的事只有一件：给定前面的所有 token（token：模型处理文本的最小单位——一个字、半个词或一个符号，L2 详述），预测<strong>下一个 token 的概率分布</strong>，
+然后按某种策略（temperature 控制的采样）挑一个，拼回去，再预测下一个。"写一篇长文" = 这个动作重复几千次。
+两个直接推论：</p>
+<p><strong>推论 1：它没有"查询"动作。</strong>你问"我的 API key 是什么"，它不是去检索，而是补全
+"在这种上下文里，接下来最像答案的 token 序列"。如果训练数据里没见过你的 key，它就生成一个
+<strong>看起来像 key 的字符串</strong>——这就是幻觉的本质：<strong>它在补全，不在检索</strong>。
+所以 agent 必须把"事实获取"外置成工具（读文件、查数据库），而不是指望模型"知道"。</p>
+<p><strong>推论 2：权重是冻结的。</strong>推理阶段模型什么都不学。你觉得"它越用越懂我"，全部是
+工程层在记忆（A6）。这一点决定了"学习"在 agent 系统里的位置——全部发生在模型外面。</p>
+
+<h2>二、一次真实调用的解剖（工作示例）</h2>
+<pre><code>resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system",    "content": "你是文件问答助手。"},   # ① 常驻层：人格与规则
+        {"role": "user",      "content": "notes.md 里写了什么？"}, # ② 本轮问题
+        # ③ 历史消息会由程序追加在这里——注意：是你追加的，不是模型记得的
+    ],
+    temperature=0.2,   # ④ 采样温度：低=保守稳定，高=发散创意
+)
+print(resp.choices[0].message.content)</code></pre>
+<p>逐项说清楚：</p>
+<p><strong>① system</strong>：优先级高于后续消息的常驻指令。但注意——它是"强烈偏好"不是"安全边界"，
+后面的消息（尤其工具读进来的内容）可以冲击它，这是 A12 提示注入的根源。<br>
+<strong>② user/assistant</strong>：对话轮。历史 = 你把之前的轮<strong>全部重发</strong>。<br>
+<strong>④ temperature</strong>：结构化输出/工具调用场景用低温度（0–0.3），创意写作用高温度（0.7+）。
+agent 默认应该低——你要的是可靠决策不是灵感。</p>
+<p><strong>token 怎么算</strong>（做预算要有手感）：1 个英文单词 ≈ 1.3 token；1 个汉字 ≈ 1–2 token。
+一个 8K token 的窗口，中文大约只装 4–6 千字。<strong>窗口是稀缺资源</strong>——这是 A5 上下文工程、
+也是 Easel 整个技能分层设计的起点。</p>
+
+<h2>三、三个必须刻进脑子的特性（agent 设计的因）</h2>
+<table>
+  <tr><th>特性</th><th>含义</th><th>agent 层的对策</th></tr>
+  <tr><td><strong>无状态</strong></td><td>两次调用间什么都不记得</td><td>记忆系统（A6）：历史重发 + 文件长期记忆</td></tr>
+  <tr><td><strong>窗口有限</strong></td><td>能看到的 token 有上限</td><td>compaction 压缩 / 检索按需取（A8）</td></tr>
+  <tr><td><strong>只会生成文本</strong></td><td>不能读文件/联网/执行</td><td>工具系统（L7/A2）：harness 替它动手</td></tr>
+</table>
+<p>反过来读这张表：<strong>agent = LLM + 三个补丁</strong>。后面每一课，都是把某个补丁展开讲。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：把模型当数据库。</strong>问它任何"事实"都期望准确——错，事实必须走工具获取。
+判断标准：<strong>这个信息训练数据里可能有吗？可能过时吗？</strong>两个答案任一为"是"就该用工具。</p>
+<p><strong>坑 2：把 system prompt 当保险箱。</strong>把密钥、内部逻辑写进 system prompt 以为用户看不见
+就安全——LLM 应用史上大量泄露来自"复述你的系统提示"。敏感数据永远不进 prompt，权限问题用工程解决（A12）。</p>
+<p><strong>坑 3：迷信"更大=更准"。</strong>窗口内的事实推理，大模型小模型差距远小于"有没有把关键信息放进窗口"。
+上下文工程（A5）常常比换模型便宜一百倍。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验</h2>
+<p>用自己的话回答：① 为什么"模型记得我聊过什么"是错觉？这个错觉实际是谁在维持？
+② 模型编造一个不存在的 API key，用本课的语言精确描述发生了什么？
+把答案发到对话里，我批改后才算过。</p>
+<p><strong>一手源：</strong><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic · Building Effective Agents</a> 开头对 LLM 应用分层的定义。</p>
+
+<footer class="nav">
+  前置课 · 第一部分 · 下一课：<a href="0038-l02-tokens.html">L2 Token、窗口与成本</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. LLM 两次调用之间 remembers 什么？",
+  opts: ["什么都不记得", "记得上一轮的回答", "记得用户的所有历史"],
+  answer: 0,
+  why: "无状态是天性；'记得'是程序每次重发历史 messages 制造的错觉。"
+});
+Quiz.render("q2", {
+  q: "2. 幻觉的本质是模型在做什么？",
+  opts: ["补全像答案的文本", "从数据库检索错行", "故意欺骗使用者"],
+  answer: 0,
+  why: "它只会补全：没见过的信息就生成'看起来像'的——所以事实获取必须外置成工具。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

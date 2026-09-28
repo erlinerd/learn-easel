@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L2 · Token、窗口与成本</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第一部分 LLM · L2</div>
+  <h1>Token、上下文窗口与成本：大脑的物理约束</h1>
+  <p class="src">20 min · 一切工程妥协（压缩、检索、按需加载）的起点都在这一课</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L1」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>LLM 的世界用 token 计量一切——<strong>窗口是容量、token 是货币</strong>。
+  读懂三件事就能解释 agent 的一半设计：tokenizer 怎么切、窗口怎么分、账单怎么算。
+</div>
+
+<h2>一、tokenizer：模型眼中的文字</h2>
+<p>模型不读"字"，读 <strong>token</strong>——tokenizer（主流是 BPE 类算法）把文本切成高频子串碎片。
+手感数字（做预算必备）：</p>
+<pre><code>英文：1 token ≈ 4 个字符 ≈ 0.75 个单词（"internationalization" 可能占 5-6 个 token）
+中文：常用字多为一字 1 token，生僻词/专业词 1 字 2-3 token
+代码：缩进和符号很贵——Python 代码平均比同义英文贵 20-50%
+经验换算：1000 个汉字 ≈ 1300-1800 token</code></pre>
+<p>两个直接影响工程的事实：<strong>① 模型"数不清"字符</strong>——它看到的是碎片不是字，
+让它"限制在 200 字以内"或"提取前 12 个字符"天然不可靠，字数校验要用代码做
+（Easel 的 wordcount.py 就是这个原因存在）；<strong>② 中文比英文贵</strong>——同样内容，
+中文 prompt 成本常高出 30–80%。</p>
+
+<h2>二、窗口的三段分配（溢出前发生了什么）</h2>
+<pre><code>┌──────────────── 上下文窗口（如 128K）────────────────┐
+│ system + 工具定义        常驻区，每轮都在                  │
+│ 对话历史                 增长区，随轮数变大                │
+│ 本轮新内容 + 模型输出    工作区，必须预留                  │
+└──────────────────────────────────────────────────┘</code></pre>
+<p>关键认知：<strong>输出也占窗口</strong>。max_tokens 设太低，JSON 生成到一半被截断——
+这是结构化输出莫名解析失败的常见根因。窗口满了有两种表现：provider 直接报错（好的情况），
+或<strong>静默截断开头</strong>（坏的情况——system prompt 被切掉，agent 行为突变且无报错）。
+所以永远留输出预留（Easel 的 compaction reserve 16384 就是这个思想，正课 L18）。</p>
+
+<h2>三、账单怎么算：长对话的复利</h2>
+<p>API 按 token 计费，两个要点：<strong>输出价通常是输入价的 2–5 倍</strong>；
+<strong>每轮输入 = 全部历史重发</strong>（L1 的无状态）。于是 10 轮对话的输入成本是复利曲线：</p>
+<pre><code>每轮新增 1000 token（含工具结果），10 轮累计输入成本：
+轮1 输入 1K + 轮2 输入 2K + … + 轮10 输入 10K = 累计 55K
+第 20 轮时单轮输入已 20K——是第一轮的 20 倍
+省钱开关：prompt cache 命中部分约 1/10 价（各家略有差异）</code></pre>
+<p>这就是 A5（上下文工程）四原则的经济学根源：稳定前缀为缓存、渐进披露为省输入、
+压缩历史为斩复利。<strong>KV cache 与 prompt cache 的区别</strong>顺带说清：
+KV cache 是推理引擎层的注意力复用（微秒级提速），prompt cache 是它在计费层的产品化——
+工程上你只需要管"前缀稳定"这一件事，两个都会来。</p>
+
+<h2>四、常见踩坑</h2>
+<p><strong>坑 1：不看 usage 字段。</strong>响应里的 usage（prompt/completion tokens）是唯一的真实账本，
+估算和真实常差 30%。上线第一天就该把 usage 记进日志（也是 A11 可观测的素材）。</p>
+<p><strong>坑 2：长对话不设熔断。</strong>没有轮数/成本上限的会话，成本曲线后期失控——
+和 A3 铁律③同源：预算是工程问题，不是模型问题。</p>
+<p><strong>坑 3：让模型数字数。</strong>任何精确计数（字数、列表第 N 项、前 X 字符）交给代码做。
+模型给的是"大概"，契约要的是"精确"。</p>
+
+<h2>五、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>六、出口检验</h2>
+<p>算一笔账：一个 agent，system 800 token、8 个工具 schema 共 1200、每轮工具结果 1500、
+输出平均 800。第 6 轮结束时累计输入 token 是多少？如果第 4 轮起做了"历史摘要压缩到 1000"呢？
+（答案发到对话里，我核对你的算式。）</p>
+
+<footer class="nav">
+  <a href="0025-c01-llm.html">← L1</a> · 下一课：<a href="0039-l03-sampling.html">L3 采样与参数</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 长对话成本呈复利增长的根本原因是？",
+  opts: ["历史每轮全量重发", "模型越聊越慢", "输出价格逐渐上涨"],
+  answer: 0,
+  why: "无状态 → 每轮输入包含全部历史；第 N 轮输入是第 1 轮的 N 倍量级。"
+});
+Quiz.render("q2", {
+  q: "2. JSON 生成到一半被截断，最常见的根因是？",
+  opts: ["输出也占窗口且被限", "网络传输中途断开", "模型忘记了输出格式"],
+  answer: 0,
+  why: "max_tokens/窗口预留不足会截断输出——结构化解析失败的隐形杀手。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

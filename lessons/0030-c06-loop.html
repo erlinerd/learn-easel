@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A3 · 循环：agentic loop 的本质</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A3</div>
+  <h1>循环：agentic loop 的本质与三条铁律</h1>
+  <p class="src">20 min · 概念层的 loop；OpenClaw 的 1562 行实现在正课 M6</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A2 能力封装」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>所有 agent loop 都是同一个感知-决策-行动循环，成败系于三条铁律：
+  <strong>失败是消息不是异常、历史只追加不重写、必须可中断且有上限</strong>。
+  违反任何一条的 loop 在玩具里能跑，进生产必炸。
+</div>
+
+<h2>一、循环的极简本质</h2>
+<pre><code>while True:
+    感知：把最新环境状态（含工具结果）组装进上下文
+    决策：LLM 决定下一步（调用工具 / 给出回答 / 请求帮助）
+    行动：harness 执行决策，改变真实世界
+    停止：回答完成 / 达到步数上限 / 超时 / 用户中断</code></pre>
+<p>A1 那 20 行代码就是它的直译。OpenClaw 的 1562 行版本只是加了：
+流式（边生成边执行工具）、并发（多会话隔离）、compaction（窗口管理）、钩子（审批/改写）——
+<strong>骨架一模一样</strong>。所以这课的概念你吃透了，正课 L16 只是去核对"哪些铁律在哪些行"。</p>
+
+<h2>二、三条铁律逐条推演（每条推演"违反后第 N 轮发生什么"）</h2>
+<p><strong>铁律①：失败是消息，不是异常。</strong></p>
+<pre><code># 违反版：工具抛异常，直接上抛
+def execute(name, args):
+    return open(args["path"]).read()      # FileNotFoundError → 崩给用户
+
+# 后果推演：模型猜错路径（很常见）→ 程序崩 → 用户看到 traceback。
+# agent 的"自我纠错"能力完全没参与。
+
+# 遵守版：异常转错误消息
+def execute(name, args):
+    try:    return open(args["path"]).read()
+    except Exception as e:
+        return json.dumps({"error": str(e)})   # 模型下一轮看到错误，自己换路</code></pre>
+<p>OpenClaw 的实现叫 isError 回填（正课 L17 的 :1140 一段逐行看）。
+错误消息要<strong>含足够纠错信息</strong>："FileNotFoundError: notes.md（当前目录是 /app，
+是否存在 notes.txt？）"比"出错了"有用一万倍。</p>
+<p><strong>铁律②：历史只追加，不重写。</strong>重写历史（比如删掉失败轮"省 token"）的三个代价：
+(a) <strong>失去审计</strong>——出了事无法回放当时模型看到什么；
+(b) <strong>prompt cache 全失效</strong>——前缀变了，每轮全价重算；
+(c) <strong>并发写冲突</strong>——两个进程同时改历史文件。
+正确做法：压缩也用"追加摘要条目"表达（A6），原文永远在 transcript 里。
+OpenClaw 连 compaction 都是一条追加记录（正课 L18）。</p>
+<p><strong>铁律③：必须可中断、有上限。</strong>至少三层保险：步数上限（OpenClaw 外层重试预算
+32–160 次）、超时（模型 idle 120/300 秒看门狗）、abort 信号（用户点停止，循环顶部检查）。
+没有上限的 loop + 模型"再试一次"的天性 = 烧钱永动机。</p>
+
+<h2>三、停止语义：模型怎么"说"它想停</h2>
+<p>provider 流结束时会给出 stopReason（OpenClaw 的真实枚举）：</p>
+<table>
+  <tr><th>stopReason</th><th>含义</th><th>loop 的动作</th></tr>
+  <tr><td class="mono">toolUse</td><td>我要用工具</td><td>执行 → 回填 → 继续循环</td></tr>
+  <tr><td class="mono">stop</td><td>我认为答完了</td><td>看 endTurn/钩子，通常终止</td></tr>
+  <tr><td class="mono">length</td><td>被 max_tokens 截断</td><td>可能触发 compaction 或续写</td></tr>
+  <tr><td class="mono">error / aborted</td><td>provider 出错 / 被中断</td><td>按失败处理（重试或终止）</td></tr>
+</table>
+<p>细节：OpenClaw 里 `stop` 且 `endTurn === false` 时<strong>不终止</strong>（模型的"话没说完"）——
+这是Responses API 的续跑语义，正课 L16 的 :317 三段式布尔里你会再见到它。</p>
+
+<h2>四、循环的敌人：注意力衰减</h2>
+<p>循环转得越久，模型对 system prompt 的注意力越弱——"开头守规矩、后面放飞"是所有 agent
+运营者的共同观察。Easel 的对策 TURN_REMINDER：把最关键的反射（先查技能库、产物进 outputs、
+不泄密）<strong>每轮在消息末尾重申</strong>——借近因效应（recency），成本约 100 token，
+显著提升后续轮的规则命中（正课 L05 看 persona.py:77-83 的原文注释）。
+原则：<strong>规则要么进铁律（代码强制），要么进每轮提醒（prompt 重申），只写一次的规则长跑必失效</strong>。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：工具结果不截断不摘要</strong>——三轮大结果就把窗口吃光，loop 自己撑死自己。</p>
+<p><strong>坑 2：把 compaction 当失败。</strong>压缩发生时不要终止会话——它是正常维护，
+压完 continue() 无缝续跑（正课 L18）。</p>
+<p><strong>坑 3：步数上限设太大。</strong>上限是"失控保险丝"不是"任务预算"——正常任务 10 步内，
+上限 30 就够；设 1000 等于没有。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验</h2>
+<p>① 写出你自己领域的最小 loop 伪代码，三铁律各标一行注释。
+② 回答：模型连错三次同一个工具调用，铁律①之下会发生什么？你会加什么额外机制止血？
+写完留着——毕业课 L20 你会真的实现它。发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0028-c04-tool-mcp-skill.html">← A2 能力封装</a> · 下一课：<a href="0048-tool-design.html">A4 工具设计</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 工具执行失败时 loop 的正确姿势是？",
+  opts: ["错误回填为消息", "异常抛给使用者", "立刻终止整个循环"],
+  answer: 0,
+  why: "失败信息给模型看才能自我纠错；异常上抛等于放弃了 agent 的自主性。"
+});
+Quiz.render("q2", {
+  q: "2. 历史只追加不重写，主要不是为了？",
+  opts: ["减少 API 调用次数", "保持审计可回放", "稳定 prompt 缓存"],
+  answer: 0,
+  why: "可回放审计与缓存稳定是两大收益；追加与否不影响调用次数（那由循环轮数决定）。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

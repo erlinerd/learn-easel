@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A8 · RAG 与检索</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A8</div>
+  <h1>RAG 与检索：把知识"在用时"搬进上下文</h1>
+  <p class="src">20 min · 向量召回原理、混合检索与重排、以及 2026 年的新答案：让 agent 自己读</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A7 结构化输出」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>RAG 四步循环 = query → embed → retrieve → augment，
+  解决"知识太大塞不进窗口"。但<strong>小语料直接读文件、agent 化检索让模型自己找</strong>，
+  往往比传统 RAG 管道更稳——RAG 是无结构大语料的专项手段，不是默认答案。
+</div>
+
+<h2>一、基础：embedding 到底做了什么（建立几何直觉）</h2>
+<p>embedding 模型把一段文本映射成一个高维向量（比如 1536 个数）。训练目标是：
+<strong>语义相近的文本，向量夹角小</strong>。经典关系"国王 − 男人 + 女人 ≈ 女王"就是这种几何的体现。
+于是"怎么退货"和"退款流程"不需要共享任何字面词，向量距离就近——这是它优于关键词搜索的地方。
+但反过来，<strong>精确匹配是它的弱项</strong>：查"报错 ERR-300012"，向量可能把"常见错误处理"排前面，
+因为语义"更近"；而关键词搜索一击命中。</p>
+
+<h2>二、四步循环 + 最难的超参（chunking）</h2>
+<pre><code>① query：用户问题（或模型生成的检索词）
+② embed：query → 向量
+③ retrieve：向量库里找余弦距离最近的 k 个块
+④ augment：块进上下文 → 模型基于它回答</code></pre>
+<p><strong>chunk（分块）是工程上最难的部分</strong>，三种主流策略与失败模式：</p>
+<table>
+  <tr><th>策略</th><th>做法</th><th>失败模式</th></tr>
+  <tr><td>固定窗口</td><td>每 500 字一块</td><td>句子拦腰斩断，块内语义残缺</td></tr>
+  <tr><td>重叠窗口</td><td>相邻块重叠 10–20%</td><td>缓解截断，但块间重复浪费 token</td></tr>
+  <tr><td><strong>按结构切</strong></td><td>沿标题/段落/函数边界切</td><td>需要语料有结构——<strong>首选，能用则用</strong></td></tr>
+</table>
+<p>原则：<strong>chunk 的边界应该和"一个完整语义单元"对齐</strong>。检索回来的是块，块烂，后面全烂——
+调 RAG 先调 chunking，别急着换 embedding 模型。</p>
+
+<h2>三、生产级检索的两个增强（混合检索与重排）</h2>
+<p><strong>混合检索</strong>解决"向量 vs 关键词"各有所短的问题：向量出语义候选，BM25 类
+关键词算法出精确候选，两路结果用 <strong>RRF（倒数排名融合）</strong>合并——
+一个结果在两路都靠前，融合分就高。这是生产 RAG 的标配，不是可选项。
+<strong>重排（rerank）</strong>解决"召回 ≠ 相关"：第一步宽召回（top 50，求别漏），
+第二步用专门的 reranker 模型对 50 个候选逐个精排，取前 5 进上下文（求准）。
+两阶段架构——<strong>宽召回 + 精排序</strong>——和搜索引擎同构，直接照抄。</p>
+<p>还有两招检索前的加工：<strong>查询改写</strong>（用户口语"那个东西怎么弄"→ 改写成规范检索词，
+用一次便宜的 LLM 调用）和 <strong>HyDE</strong>（让模型先虚构一个理想答案，拿虚构答案去检索——
+答案和文档的相似度天然高于问题和文档）。</p>
+
+<h2>四、三条路线怎么选（决策树）</h2>
+<table>
+  <tr><th>路线</th><th>适合</th><th>Easel 的取舍</th></tr>
+  <tr><td>全量进窗口</td><td>语料 ≤ 几千 token</td><td>画像六维文件直接整读（L05）——零检索成本零召回风险</td></tr>
+  <tr><td>传统 RAG</td><td>海量无结构语料、问法多变</td><td>OpenClaw memory index 支持向量索引</td></tr>
+  <tr><td>agent 化检索</td><td>有结构、可导航的知识</td><td><strong>默认路线</strong>：技能按需读 references；未配向量 API 时显式退化关键词检索</td></tr>
+</table>
+<p><strong>agent 化检索</strong>为什么常胜：模型看到"有什么可读"（目录/索引/frontmatter），
+自己决定读哪块——检索词的语义理解、多跳查找（读完 A 发现要看 B）、不够再读，
+全交给 loop 本身（A3），不需要独立的检索管道和它的调参地狱。代价是多几次模型调用。
+<strong>决策口诀：语料小→整读；有结构→agent 化；大而乱→才上 RAG。</strong></p>
+
+<h2>五、RAG 的评测（A11 在检索上的特化）</h2>
+<p>RAG 有自己的评测指标：建一个"问题 → 应命中的文档块"的金标集，测
+<strong>召回率@k</strong>（答案块在 top-k 里的比例）和<strong>精确率</strong>（top-k 里多少是垃圾）。
+调 chunking、换 embedding、调 k，每次跑一遍金标集——不建金标集的 RAG 调优全是玄学。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：切太碎。</strong>chunk 100 字一条，检索命中 10 条拼不出完整语义——
+召回率高了，答案质量降了。<strong>坑 2：只有向量没有关键词。</strong>专有名词、错误码、
+型号精确查询全部翻车。混合检索是标配。<strong>坑 3：top-k 原文直接塞。</strong>
+检索回来 5 段 × 800 字全进上下文——违反 A5 蒸馏原则：进摘要或首句 + 指针，模型需要细节自己取。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>三个场景选路线并说理由：① 1000 页法规库问答；② 六份用户画像文件；
+③ 你的代码仓库问答（提示：grep 和目录树算不算"可导航结构"？）。
+再答一题：你的产品文档要做客服机器人，chunking 按什么边界切、检索用不用混合？
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0033-c09-structured-output.html">← A7 结构化输出</a> · 下一课：<a href="0035-c11-multi-agent.html">A9 多智能体</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 向量检索相对关键词搜索的弱项是？",
+  opts: ["精确匹配查询词", "理解同义的不同表述", "处理超长的输入文本"],
+  answer: 0,
+  why: "语义相近≠字面命中：错误码、型号这类精确查询，关键词/混合检索才稳。"
+});
+Quiz.render("q2", {
+  q: "2. 宽召回 + 精排序的两阶段设计，第一阶段的目标是？",
+  opts: ["别漏（召回率优先）", "别错（精确率优先）", "省钱（延迟最低优先）"],
+  answer: 0,
+  why: "第一阶段宽召回 top-50 求不漏，第二阶段 reranker 精排求准——与搜索引擎同构。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

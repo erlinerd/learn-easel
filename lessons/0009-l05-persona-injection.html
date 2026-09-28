@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L05 · 画像注入机制</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">M2 大脑层 · L05</div>
+  <h1>画像注入：为什么好的上下文不写文件</h1>
+  <p class="src">45 min · 精读 easel/persona.py（99 行，本模块最后一课，含动手作业）</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L04」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>画像不进系统提示、不进全局文件，而是<strong>作为消息内联前缀</strong>注入
+  （persona.py:64-68 三句话）。这个决定同时解决了并发竞态、会话自包含、跨入口一致性三个问题。
+</div>
+
+<h2>一、基础：画像是什么，注入要解决什么问题</h2>
+<p>画像（profile）= 一个账号的完整人设，Easel 里是 <code>profiles/&lt;名字&gt;/</code> 下六个
+markdown 文件：<code>identity.md</code>（定位）、<code>style.md</code>（风格）、<code>audience.md</code>
+（受众）、<code>platforms.md</code>（平台）、<code>preferences.md</code>（偏好红线）、
+<code>memory.md</code>（长期记忆）。它必须进入模型上下文，模型才知道"为谁创作"。</p>
+<p>问题是<strong>怎么进</strong>。三个候选方案：</p>
+<table>
+  <tr><th>方案</th><th>做法</th><th>致命伤</th></tr>
+  <tr><td>A. 写进 system prompt</td><td>启动时把画像拼进 SOUL</td><td>画像按会话不同，但 system 是共享常驻——并发会话互相覆盖</td></tr>
+  <tr><td>B. 写全局 USER.md</td><td>启动时把画像写进工作区全局文件</td><td>同上，且历史包袱：CLI 曾这么做过（docstring 自述）</td></tr>
+  <tr><td>C. 消息内联前缀</td><td>每条消息开头带画像声明</td><td>每轮多 ~50 token（唯一的代价）</td></tr>
+</table>
+<p>选择是 C。看竞态推演（下一节）再回头看这张表，你会明白那 50 token 是全工程最值的支出。</p>
+
+<h2>二、竞态推演（出口检验的题眼，慢慢走）</h2>
+<p>设两个并行会话：A 绑美食画像，B 绑科技画像。方案 B（全局文件）的时间线：</p>
+<pre><code>t1  A 开工：写 USER.md = "美食账号，受众爱探店"
+t2  B 开工：写 USER.md = "科技账号，受众是开发者"     ← 覆盖了 A 的
+t3  A 的下一轮：读 USER.md → 读到"科技账号"
+t4  A 给美食号写出面向开发者的文案                     ← 串味，且无人报错</code></pre>
+<p>最恶毒的是 t4：<strong>没有任何报错</strong>。文件系统不觉得两个进程写同一文件有问题，
+模型不知道自己读错了人设，用户只觉得"产出质量不稳定"。<strong>静默串味</strong>是共享可变状态
+的经典事故（并发编程五十年老问题），Easel 的解法也经典：<strong>消灭共享可变状态</strong>——
+画像不进任何共享文件，改为每个请求<strong>自带声明</strong>（消息内联）。自包含请求 = 请求之间
+没有隐藏耦合 = 并发天然安全。这是函数式编程"不可变数据"思想在 prompt 工程的应用。</p>
+
+<h2>三、三个函数读懂一个模块（persona.py 99 行）</h2>
+<p><strong>load_profile_text（:38-55）</strong>：按固定顺序拼六维文件——
+<code>_FILE_ORDER = [identity, style, audience, platforms, preferences, memory]</code>，
+顺序有意义：定位先于细节，红线（preferences）压轴前，记忆最后。
+目录里其余 .md 追加在后。注意<strong>制作层不读 platforms.md</strong>（AGENTS.md :57）——
+各层只取所需维度，又一个"渐进披露"。</p>
+<p><strong>persona_prefix（:58-69）</strong>：三句话前缀，原文：</p>
+<pre><code>f"我当前使用的画像是「{name}」。"
+f"本会话的账号长期记忆仅使用 profiles/{name}/memory.md，"
+"不要使用工作区全局 MEMORY.md 作为账号记忆。"</code></pre>
+<p>注意三句话的信息密度：句 1 声明身份；句 2 定记忆作用域（<strong>只认这个文件</strong>）；
+句 3 显式排除全局记忆。A6 说的"作用域声明"就是这个——不靠模型猜，每个请求都明说。</p>
+<p><strong>chat_turn_message（:91-99）</strong>：完整拼装 = 画像前缀 + 用户原文 + TURN_REMINDER。
+前端只显示用户原文——注入的部分对用户不可见。</p>
+
+<h2>四、TURN_REMINDER：对抗注意力衰减（:72-83）</h2>
+<p>docstring 是全模块最值得背的注释（原文大意）："系统提示只在会话开头最新鲜；长对话里后续追问，
+模型对系统提示的注意力会衰减 → 常见现象'开头会查 SKILL、后面就凭记忆裸做'。把最关键的反射
+每轮在消息末尾重申一次（放末尾借近因效应），成本极低，显著提升后续轮次的 SKILL 命中率。"</p>
+<p>三个知识点叠在这段注释里：<strong>① 现象命名</strong>（指令衰减）——知道症状才能对症；
+<strong>② 机制解释</strong>（L4 位置效应：末尾近因最显眼）；<strong>③ 工程化</strong>（固定模板 +
+只加在对话入口）。看它重申什么：先查技能库、五层自己产出、先查已登录账号、对外不泄密——
+全是 AGENTS.md 的最高频规则。<strong>宪法每轮复读一遍最重要的三条</strong>，成本 100 token，
+换规则存活率。</p>
+
+<h2>五、常见踩坑</h2>
+<p><strong>坑 1：画像写进全局文件图省事。</strong>单用户测试期没事，多会话/多账号必串味——
+而且没有报错，等发现时已经发了多少条错人设的内容。<strong>坑 2：前缀声明了记忆作用域
+但 agent 还是去读全局。</strong>要配合 AGENTS.md 的"禁读全局 MEMORY.md"（L03 :95）双保险——
+prompt 层和规则层都要说。<strong>坑 3：REMINDER 无限膨胀。</strong>重申清单越加越长，
+最后占了半个窗口——只放"衰减后最痛"的三四条。</p>
+
+<h2>六、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>七、出口检验 + 动手作业</h2>
+<p><strong>检验：</strong>给两个并行会话画时序图，展示全局 USER.md 方案在哪一步串味、内联方案为什么不会。</p>
+<p><strong>作业（M2 毕业物）：</strong>为你自己的 agent 写 AGENTS.md + SOUL.md 各一份（各 ≤60 行），
+要求包含：六条执行规则、一处"刻意不写"、记忆作用域声明。写完发我评审。</p>
+
+<footer class="nav">
+  <a href="0008-l04-soul-stack.html">← L04</a> · <a href="../reference/syllabus.html">大纲</a> · 下一课：<a href="0010-l06-skill-spec.html">L06 SKILL-SPEC 三层加载</a><br>
+  卡住随时回对话问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 画像为什么走消息内联而不是全局文件？",
+  opts: ["并行会话会互相覆盖串味", "全局文件读取速度太慢", "模型看不懂全局的文件"],
+  answer: 0,
+  why: "两个会话绑不同画像时，全局文件后写者胜出，先写会话下一轮读到别人的画像。"
+});
+Quiz.render("q2", {
+  q: "2. TURN_REMINDER 放在消息末尾利用的是？",
+  opts: ["近因效应（末尾最显眼）", "首因效应（开头最显眼）", "随机均匀分布"],
+  answer: 0,
+  why: "L4 位置效应：开头和结尾最显眼——system 占开头，REMINDER 占结尾，两头都占。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

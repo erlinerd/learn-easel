@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L4 · 消息协议与角色</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第一部分 LLM · L4</div>
+  <h1>消息协议与角色：你和模型之间的合同格式</h1>
+  <p class="src">20 min · roles 语义、聊天模板本质、多模态、位置效应、历史管理三模式</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「L3」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>chat API 的 messages 数组是一份<strong>结构化合同</strong>，
+  每个 role 有严格语义；而"聊天模型"的本质是补全模型 + <strong>聊天模板</strong>的产物——
+  理解这层包装，工具回填、多模态、注入风险、历史管理就全部串起来了。
+</div>
+
+<h2>一、基础：一次请求的完整组装过程</h2>
+<p>你发 <code>messages=[...]</code> 给 API，到模型真正"阅读"之间发生了什么：
+provider 把你的数组用<strong>聊天模板</strong>拼成一段带特殊标记的纯文本（见下节），
+加上采样参数（L3）发给模型，模型逐 token 生成直到停止。理解这条流水线的好处：
+<strong>messages 数组的每个设计决定，最终都变成"模型看到的文本顺序和标记"</strong>——
+顺序、角色、内容类型全部有后果。</p>
+
+<h2>二、四种角色的语义（谁说的、什么地位）</h2>
+<table>
+  <tr><th>role</th><th>语义</th><th>工程要点</th></tr>
+  <tr><td class="mono">system</td><td>任务设定与规则，优先级最高</td><td>是"强烈偏好"不是安全边界（A12）；须稳定（缓存，A5）</td></tr>
+  <tr><td class="mono">user</td><td>用户输入</td><td>不可信输入的第一来源（直接注入面，A12）</td></tr>
+  <tr><td class="mono">assistant</td><td>模型的历史输出</td><td>含 tool_calls 声明时必须原样回填（L7 协议）</td></tr>
+  <tr><td class="mono">tool</td><td>工具执行结果</td><td>第二个不可信来源（外部内容=间接注入面）</td></tr>
+</table>
+<p>协议红线：<strong>assistant 的 tool_calls 和对应 tool 结果必须成对</strong>，缺一边 API 直接 400；
+且顺序敏感——tool 消息必须紧跟在带 tool_calls 的 assistant 之后，不能隔着别的消息。
+也不要把工具结果塞进 user 消息偷懒：模型对 tool 角色有"这是事实数据"的先验，
+对 user 有"这是指令"的先验，<strong>混用会悄悄改变模型对内容的解读方式</strong>
+（把数据当指令读 = 注入面扩大）。</p>
+
+<h2>三、聊天模板：一层不该被忘记的包装</h2>
+<p>底层模型只会文本补全。chat API 是<strong>聊天模板</strong>把 messages 拼成带特殊标记的文本：</p>
+<pre><code>&lt;|system|&gt;你是助手&lt;|end|&gt;
+&lt;|user|&gt;你好&lt;|end|&gt;
+&lt;|assistant|&gt;</code></pre>
+<p>两个推论：<strong>① 模型是"被训练成"认这些标记的</strong>——如果你的用户输入里恰好包含类似标记的文本，
+就可能越权变成"指令"（提示注入的技术根源，A12 的攻击剧本即此）；
+<strong>② 不同家模板不同</strong>——同一组 messages 换 provider 行为会漂移，跨 provider 迁移要重测。</p>
+
+<h2>四、多模态：content 不只是字符串</h2>
+<pre><code>{"role": "user", "content": [
+  {"type": "text", "text": "这张图里是什么？"},
+  {"type": "image_url", "image_url": {"url": "https://... 或 base64:data:image/png;base64,..."}}
+]}</code></pre>
+<p>图像占 token 的粗略手感：一张图几百到一千多 token（按分辨率计）。
+agent 里传图给模型判断（"这张封面合规吗"）完全可行；但批量传图烧钱快——
+<strong>能用代码判断的（尺寸/格式/清晰度）先代码判断</strong>，图只留给真正需要视觉理解的决策。</p>
+
+<h2>五、位置效应：lost in the middle</h2>
+<p>长上下文里模型对信息的检索能力<strong>不均匀</strong>：开头和结尾最"显眼"，中段容易漏
+（"Lost in the Middle"，Liu et al. 2023）。工程对策三条：① 最重要的规则放开头（system）
+<strong>并在末尾重申</strong>（Easel 的 TURN_REMINDER 就是这个原理，L05/A3 都会再遇到）；
+② 长文档的关键信息用标记/标题提高显著性；③ 真正关键的契约别埋在 50K 历史的中段。</p>
+
+<h2>六、历史管理三模式（从协议到策略）</h2>
+<p>messages 数组每轮怎么组装？三种基本模式，复杂度递增：</p>
+<table>
+  <tr><th>模式</th><th>做法</th><th>代价</th><th>适用</th></tr>
+  <tr><td><strong>全量重发</strong></td><td>历史全部保留，每轮原样发送</td><td>成本复利增长（L2），终会爆窗</td><td>短会话默认</td></tr>
+  <tr><td><strong>滑动窗口</strong></td><td>只保留最近 N 轮</td><td>早期约束静默丢失</td><td>闲聊类，约束少的场景</td></tr>
+  <tr><td><strong>摘要+窗口</strong></td><td>远期压成摘要条目 + 近期保原文</td><td>要管理压缩时机与边界</td><td>长任务 agent（OpenClaw compaction 的思路，A6/L18）</td></tr>
+</table>
+<p>注意滑动窗口的坑：用户第 2 轮说"以后都用中文回复"，第 15 轮被滑出窗口——约束丢了。
+对策：持久约束进 system 或长期记忆（A6），不靠历史轮次"活着"。</p>
+
+<h2>七、常见踩坑</h2>
+<p><strong>坑 1：手拼聊天模板。</strong>直接往文本里拼 "User:" "Assistant:"——绕过模板等于绕过训练分布。永远走 chat API。<br>
+<strong>坑 2：role 语义混用。</strong>系统规则写进 user、工具数据写进 user——模型先验全乱。<br>
+<strong>坑 3：关键契约埋中段。</strong>第 8 轮的约定到第 20 轮就忘——要么进 system，要么每轮末尾重申。<br>
+<strong>坑 4：tool 结果塞 user 角色。</strong>省事的代价是模型把数据当指令读。</p>
+
+<h2>八、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>九、出口检验</h2>
+<p>① 说出四种 role 各自的"可信度地位"和对应的注入面；② 解释为什么绕过 chat API 手拼模板是坏主意；
+③ 你的 agent 有一条"发布前必须人确认"的铁律，用户在第 3 轮说的、第 15 轮才执行发布——
+用本课和 L2 的知识给出保证它不丢的两层方案。发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0039-l03-sampling.html">← L3</a> · 下一课：<a href="0041-l05-capabilities.html">L5 能力与边界</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 长上下文中信息检索能力的分布是？",
+  opts: ["两头强中间弱", "开头最强逐条递减", "均匀分布没有差异"],
+  answer: 0,
+  why: "Lost in the Middle 现象：开头结尾最显眼——重要规则放开头且末尾重申。"
+});
+Quiz.render("q2", {
+  q: "2. tool 结果应该用哪个角色回填？",
+  opts: ["tool 专用角色", "user 冒充数据", "assistant 自答自问"],
+  answer: 0,
+  why: "role 带先验：tool=事实数据、user=指令。混用会改变模型对内容的解读方式。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

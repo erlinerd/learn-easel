@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A14 · 规划与长任务</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A14</div>
+  <h1>规划与长任务：把大任务做成能断点续跑的工程</h1>
+  <p class="src">20 min · 先讲清"长任务为什么难"，再讲规划怎么落盘、断点怎么续跑</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A13 错误处理与韧性」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>跨多小时/多步骤的任务，成败不在"模型会不会规划"，
+  而在<strong>计划是不是外置的持久 artifact</strong>——落在文件里、每步登记、失败可从断点续跑。
+  计划只存在于上下文里 = 压缩一下就丢、失败一次就从头再来。
+</div>
+
+<h2>一、基础：为什么"长任务"对 agent 是难题</h2>
+<p>人类做一个两小时的项目，靠三样东西：记得开头做了什么（记忆）、知道接下来做什么（计划）、
+做完一步划掉一步（进度）。agent 天生三样都缺，根源都在 L1–L2 学过的机理：</p>
+<table>
+  <tr><th>人类靠什么</th><th>agent 缺什么</th><th>后果</th></tr>
+  <tr><td>长期记忆</td><td>无状态 + 窗口有限（L1/L2）</td><td>做到第 8 步，第 1 步的决定可能已被压缩或遗忘</td></tr>
+  <tr><td>纸面计划</td><td>计划只存在于上下文消息里</td><td>compaction 一压缩，计划跟着旧消息一起变摘要</td></tr>
+  <tr><td>进度清单</td><td>没有"做到哪了"的持久记录</td><td>失败重来 = 全部从头，包括已花钱、已发布的步骤</td></tr>
+</table>
+<p>所以"规划"对 agent 不是锦上添花的智力展示，是<strong>把这三样缺失补上的工程手段</strong>：
+记忆缺 → 状态写文件；计划缺 → 计划写文件；进度缺 → 每步登记。</p>
+
+<h2>二、基础：任务分解是什么、agent 怎么分解</h2>
+<p>任务分解 = 把"做一个论文解读视频"（不可直接执行）变成一串可执行步骤
+（读论文 → 提要点 → 写脚本 → 生成配音 → 剪辑 → 发布）。两种分解者：</p>
+<p><strong>模型自己分</strong>：在 loop 里每一步现场决定下一步——这就是 A3 的反应式循环，
+天然带"微规划"。适合步骤间强依赖前一步结果的任务（写了脚本才知道配什么画面）。<br>
+<strong>先规划后执行</strong>：开工前让模型（或人）产出完整步骤清单，再逐步执行。
+适合路径可预知的流水线。Easel 的规则（AGENTS.md）：单层任务直接执行，
+<strong>跨两层以上的多步任务先给简短 Plan</strong>——注意是"简短"：3–5 个里程碑，
+不是 30 步施工图。</p>
+<p>为什么里程碑粒度就够？因为<strong>计划会过时</strong>：执行中发现论文读不懂要换篇、
+生成的配音不合格要换声音——细粒度计划每改一步全盘作废，里程碑之间的细节让模型现场反应（A10 的规划-执行模式）。</p>
+
+<h2>三、计划落盘：manifest 模式（Easel 的答案）</h2>
+<p>看 Easel AGENTS.md 编排节的规定（正课 L03 逐条读）——跨层任务用
+<code>manifest.py</code> 传递<strong>"产物路径 + 一句结论"</strong>，每层完成或失败都登记：</p>
+<pre><code>outputs/视频项目/
+├── manifest.json      # 薄索引：每步 {层, 产物路径, 结论, 状态}
+├── brief.md           # 关键决策记录（为什么选这个方向）
+├── script.md          # 产物：文案
+└── assets/            # 中间素材</code></pre>
+<p>三个设计点，每个都在补第一节的一块缺失：<strong>① 薄索引不搬内容</strong>
+（A5 蒸馏原则——下游按路径自取，计划文件不膨胀）；<strong>② 状态显式</strong>
+（success/failed/skipped，失败保留断点——补"进度清单"）；<strong>③ 决策与产物分离</strong>
+（brief.md 记"为什么"，产物记"是什么"——复盘时才能重建推理链）。</p>
+
+<h2>四、断点续跑：失败后的正确姿势</h2>
+<pre><code>失败时登记 --status failed 并保留已完成产物
+重试逻辑：读 manifest → 找到第一个 failed/缺失步骤 → 从那里继续
+                        （不重跑已成功的层——那可能已经花过钱、发过内容！）</code></pre>
+<p>这里有个和 A3 铁律①的精妙对比，值得停下来想清楚：<strong>同样是失败，为什么工具失败要
+"消息回填让模型当场重试"，跨层任务失败却要"登记断点冷启动"？</strong>判断标准是
+<strong>步骤有没有不可逆副作用</strong>：读文件失败重试无害（可逆）；
+而"发布"这一层如果失败，你<strong>不知道它到底是没发出去还是发出去了但响应超时</strong>——
+盲目重跑可能二次发布。所以轻失败（可逆）当场重试，重失败（不可逆）停下来先对账（A13 展开）。</p>
+
+<h2>五、长任务的三个配套</h2>
+<p><strong>① 进度可见</strong>：每步完成向用户推送 activity（Easel 的 SSE 事件流，A15 展开）——
+20 分钟黑箱没人受得了。<br>
+<strong>② 步骤幂等设计</strong>：每步尽量可独立重跑（产物写文件而非只留在上下文），
+为断点续跑打底。<br>
+<strong>③ 超时与预算分层</strong>：每步有自己的超时，整任务有自己的预算
+（Easel：制作层 7200s / 直接层 300s，三入口单一真相源）——没有分层预算，
+一步卡死全任务陪葬。</p>
+
+<h2>六、常见踩坑</h2>
+<p><strong>坑 1：计划活在上下文里。</strong>写在 assistant 消息里的计划，一次 compaction 就可能被摘要掉——
+重要计划写文件。<strong>坑 2：失败从头重跑。</strong>已发布的层被重跑 = 二次发布事故；
+断点是安全设计不只是效率设计。<strong>坑 3：规划过细。</strong>十步任务写三十步计划，
+改一步全盘作废——里程碑粒度就够。</p>
+
+<h2>七、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>八、出口检验</h2>
+<p>给"自动制作并发布一个论文解读视频"设计 manifest 结构：至少 5 个步骤的名称、
+每步的产物类型、哪些步骤不可逆（失败后绝不能自动重跑）、断点续跑的判定逻辑。
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0044-a13-resilience.html">← A13 错误处理与韧性</a> · 下一课：<a href="0045-a14-agent-ux.html">A15 人机交互与信任</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 计划为什么必须落盘成文件？",
+  opts: ["防压缩丢失可续跑", "文件系统写入速度更快", "省去调用模型的费用"],
+  answer: 0,
+  why: "上下文里的计划会被 compaction 摘要掉；文件里的计划才能断点续跑。"
+});
+Quiz.render("q2", {
+  q: "2. 跨层任务失败后正确的恢复方式是？",
+  opts: ["从断点续跑不重成功层", "整个任务从头重跑一遍", "让模型决定是否全部重来"],
+  answer: 0,
+  why: "已成功层可能有不可逆副作用（已发布/已扣费）——重跑即事故。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

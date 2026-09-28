@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A13 · 错误处理与韧性</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A13</div>
+  <h1>错误处理与韧性：agent 掉线世界里活着的手艺</h1>
+  <p class="src">20 min · 先讲清 agent 的失败和传统软件有什么本质不同，再讲对症策略</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A12 安全」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>生产 agent 的大部分代码不在 happy path 上。
+  先给失败<strong>分类</strong>（四层），每类配对症策略：<strong>限流退避、错误重试、能力回退、
+  诚实降级</strong>——而带副作用的操作永远不盲目重试。
+</div>
+
+<h2>一、基础：agent 的失败和传统软件有什么不同</h2>
+<p>传统软件的失败是<strong>确定性的</strong>：同样的输入，bug 每次都在同一行炸出同样的异常——
+所以有单元测试、断言、异常处理这套成熟武器。agent 引入三种全新的失败形态：</p>
+<table>
+  <tr><th>新形态</th><th>是什么</th><th>例子</th><th>传统武器为什么失效</th></tr>
+  <tr><td><strong>非确定性失败</strong></td><td>同样输入，这次对下次错</td><td>采样温度下模型这次路由对了下次选错工具</td><td>单次测试通过 ≠ 稳定，要统计性地评（A11）</td></tr>
+  <tr><td><strong>软失败</strong></td><td>不抛异常，只是结果变差</td><td>模型自信地编了个不存在的 API 参数</td><td>没有异常可 catch——只能靠校验和评测发现</td></tr>
+  <tr><td><strong>组合爆炸的失败面</strong></td><td>失败点 = 每次模型决策 × 每个工具 × 每个外部服务</td><td>十轮循环、五个工具，失败面是乘积</td><td>不可能枚举所有路径，只能分层设防</td></tr>
+</table>
+<p>这三点决定了 agent 韧性的思路：<strong>不追求"不失败"，追求"失败了能恢复、能定位、能诚实上报"</strong>。
+所以 A3 铁律①（失败是消息）是这里的地基——先让失败可被看见和消费，才谈得上处理。</p>
+
+<h2>二、失败分类学（对症才能下药）</h2>
+<table>
+  <tr><th>层</th><th>典型错误</th><th>策略</th></tr>
+  <tr><td><strong>Provider 层</strong></td><td>429 限流、5xx、超时、上下文溢出</td><td>429=退避等待；5xx=有限重试；溢出=压缩后重试（A3/L18）</td></tr>
+  <tr><td><strong>工具层</strong></td><td>脚本失败、选择器失效、文件缺失</td><td>错误回填给模型自我纠错（A3 铁律①）；连败设止血线</td></tr>
+  <tr><td><strong>Harness 层</strong></td><td>gateway 死了、进程崩、流中断</td><td>健康检查 + 回退链 + 会话自愈</td></tr>
+  <tr><td><strong>业务层</strong></td><td>结果未核实、质量不达标</td><td>不掩盖：标注 unverified / 返工一次 / 上报用户（A11/A12）</td></tr>
+</table>
+
+<h2>三、重试纪律（三条红线）</h2>
+<p><strong>红线 1：指数退避 + 抖动。</strong>为什么退避？429 限流是服务在说"我满了"，
+立刻重试 = 往满杯里再倒水，还会和所有其他被限流的客户端一起挤下次窗口（惊群）。
+指数等待（1s、2s、4s…）+ 随机抖动打散重试时间，是分布式系统的标准礼仪。</p>
+<p><strong>红线 2：幂等才可自动重试。</strong>幂等 = 同一操作执行两次和执行一次效果相同。
+"读文件"幂等（重读无害）；"发布内容"<strong>不幂等</strong>（重试可能发出两条）。
+所以发布失败的正确第一步是<strong>对账</strong>（readback 查到底发出去没有），
+确认未成功才允许重试——A14 断点思想的微观版。</p>
+<p><strong>红线 3：重试有预算。</strong>有限次数 + 总时长上限，超了就走回退或诚实失败。
+（OpenClaw 外层重试预算 32–160 次，A3 提过。）无预算重试 + 软失败 = 静默烧钱循环。</p>
+
+<h2>四、回退链与熔断（Easel 的两个实例）</h2>
+<p><strong>回退链</strong>：主路径坏了走备用。Easel 的传输层：HTTP 直连网关（快）→
+不可用时回退 CLI spawn（慢但可用）。但注意它的精细之处：<strong>回退发生在"新会话"粒度，
+同一会话中途绝不换边</strong>——因为两条路径写不同的 transcript，换边=历史劈叉
+（正课 L10 的钉子文件）。教训：<strong>回退决策也要考虑状态一致性，不只是可用性</strong>。</p>
+<p><strong>熔断</strong>：某依赖连续失败就暂时跳过它，别让每个请求都去撞墙。
+Easel 的问答桥接：旧版本 gateway 没有 question RPC，连都不连（版本门），
+失败后进程级熔断只提示一次——避免每轮都触发一次注定失败的配对请求。
+熔断三态记一下：闭合（正常走）→ 打开（连续 N 次失败，直接走备用）→ 半开（冷却后试探一次）。</p>
+
+<h2>五、fail-open vs fail-closed 的选择（重要）</h2>
+<p>失败时默认放行还是默认拦截？<strong>按后果分</strong>：</p>
+<pre><code>fail-closed（默认拦）：安全闸门——content_guard 崩了 → 宁可发不出去（exit 7 精神，A12）
+fail-open （默认放）：体验功能——热点榜 API 挂了 → 跳过热榜继续写文案，说明数据缺失
+判据：这个功能出错时，最坏后果是什么？不可逆 → fail-closed；可逆 → 可 fail-open</code></pre>
+
+<h2>六、启动体检与会话自愈</h2>
+<p>韧性的一半在<strong>事前</strong>：Easel 的 doctor（环境体检：依赖/配置/网关/技能同步逐项检查）
++ ping（真实跑一次最小请求）——把"上线后才发现配置错"消灭在启动时。
+另一半在<strong>事后</strong>：session_heal 每轮启动前清洗损坏的会话文件（上游 bug 下游门口修，
+正课 L11）。你的 agent 至少要有这两个：启动自检 + 损坏可修复。</p>
+
+<h2>七、常见踩坑</h2>
+<p><strong>坑 1：把 429 当 5xx。</strong>限流是"别打我"，重试要退避等待；当 5xx 立即重试会更糟。
+<strong>坑 2：副作用操作静默重试。</strong>发布超时≠发布失败——先对账再决定。
+<strong>坑 3：吞错。</strong>except: pass 把失败藏起来，下游拿到空数据错得更深——失败要传达到能决策的层。</p>
+
+<h2>八、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>九、出口检验</h2>
+<p>给"发布流水线"（生成文案→生图→发布→对账）设计失败处理矩阵：每个环节列出
+典型错误、是否自动重试、重试前检查什么、最终失败时用户看到什么。
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0037-c13-safety.html">← A12 安全</a> · 下一课：<a href="0043-a12-planning.html">A14 规划与长任务</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. agent 的失败与传统软件最本质的不同是？",
+  opts: ["存在软失败不抛异常", "失败发生的频率更低", "失败后无法重新运行"],
+  answer: 0,
+  why: "模型可能自信地输出错误结果而不报错——没有异常可捕获，只能靠校验和评测。"
+});
+Quiz.render("q2", {
+  q: "2. 发布请求超时，正确的第一步是？",
+  opts: ["先对账再决定", "立即自动重试一次", "直接标记任务失败"],
+  answer: 0,
+  why: "超时≠失败——副作用操作先查结果（可能已成功），盲目重试=重复发布。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

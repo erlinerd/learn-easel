@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A15 · 人机交互与信任</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">前置课 · 第二部分 Agent · A15</div>
+  <h1>人机交互与信任：agent UX 的四道必答题</h1>
+  <p class="src">20 min · 先讲清 agent UX 和普通软件 UX 的本质区别，再逐题给答案</p>
+</header>
+
+<p class="src">🎒 预备知识：完成上一课「A14 规划与长任务」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
+<div class="verdict">
+  <strong>本课唯一结论：</strong>agent 的用户体验有四个普通软件没有的问题——
+  <strong>长时延要过程反馈、不确定要校准信任、不可逆要少而重的确认、内部机器要不可见</strong>。
+  每道题 Easel 都给了参考答案，而且答案几乎都在工程层不在模型层。
+</div>
+
+<h2>一、基础：agent UX 和普通软件 UX 差在哪</h2>
+<p>普通软件的交互契约是<strong>确定性的即时交换</strong>：点按钮 → 百毫秒内出结果，结果永远一样。
+用户不需要"信任"计算器，只需要会用它。agent 改写了这个契约的三个前提：</p>
+<table>
+  <tr><th>契约维度</th><th>普通软件</th><th>agent</th><th>UX 必答题</th></tr>
+  <tr><td>时延</td><td>毫秒级</td><td>一轮可能 20 分钟</td><td>怎么让人等得安心？→ 过程反馈</td></tr>
+  <tr><td>确定性</td><td>同样的输入同样输出</td><td>非确定、可能错（L5/A13）</td><td>怎么让人知道该信几分？→ 信任校准</td></tr>
+  <tr><td>后果</td><td>操作可撤销</td><td>发布/付费不可逆</td><td>哪些点必须拦人？→ 确认设计</td></tr>
+  <tr><td>决策权</td><td>用户逐步操作</td><td>用户委托 agent 自主</td><td>它自作主张的边界在哪？→ 问询设计</td></tr>
+</table>
+<p>一句话概括：普通软件 UX 管理<strong>操作</strong>，agent UX 管理<strong>委托关系</strong>——
+用户把决策权部分交给了机器，UX 的使命是让这份委托<strong>知情、可控、可校准</strong>。</p>
+
+<h2>二、第一题：长时延 → 过程反馈的梯度</h2>
+<p>一次 turn 可能跑 20 分钟，用户盯着空白界面 = 产品死亡。反馈不是"加个 loading"，
+是分梯度的信息流。Easel 的梯度（正课 L10）：</p>
+<pre><code>秒级   "⏳ 已收到，正在唤醒 agent…"      ← 请求一进来立刻发，不等模型
+流级   token 逐个渲染（thinking 可见）    ← 让人看到"在干活"
+步骤级 "🔧 调用工具后继续推理（第 2 步）" ← 每次工具调用发 activity 事件
+轮级   turn_end → 结果呈现</code></pre>
+<p>设计原则：<strong>任何时刻界面都有"正在发生什么"的答案</strong>。最贵的是第一秒的确认感
+（"已收到"不花钱，缺失它最伤——用户不知道点了有没有用），最有效的是步骤级
+（用户能自己判断"卡住了还是正常慢"，这比任何进度条都安抚人心）。</p>
+
+<h2>三、第二题：决策权 → 问询设计</h2>
+<p>AGENTS.md 规则④"查现有信息再提问"是 agent UX 的第一定律：<strong>能查到的别问</strong>——
+问用户要账号名而登录态就在磁盘上，是最败好感的行为（等于告诉用户"我什么都没查"）。
+真要问的时候三条纪律：<strong>给选项而不是开放题</strong>（Easel 的 ask_user 选项卡：点选优于打字，
+用户委托 agent 就是不想自己做开放决策）；<strong>一次问全</strong>（三个问题挤在一次问询里，
+好过三连打断）；<strong>带推荐默认值</strong>（"建议选 B，因为你的画像偏技术向"——
+推荐附理由，用户可以盲选也可以改）。</p>
+
+<h2>四、第三题：不可逆 → 确认设计（少而重）</h2>
+<p>和 A12/A13 呼应但站在 UX 侧：<strong>确认点只守不可逆操作</strong>（付费、发布、删除），
+可逆操作交给闸门和留痕。确认界面要给<strong>决策所需的最小信息集</strong>——
+Easel 发布前的 dry-run 预览是范本：列出最终标题/正文/媒体清单让用户看"将要发生什么"，
+而不是问"确定吗？"。道理：用户要判断的是<strong>内容对不对</strong>，
+不是要不要点一个按钮。<strong>警报疲劳是确认机制的死敌</strong>：什么都确认的 agent，
+两周后用户就闭着眼点"是"——确认机制名存实亡。</p>
+
+<h2>五、第四题：非确定 → 信任校准</h2>
+<p>用户对 agent 的信任必须与实际可靠度<strong>对齐</strong>——高估导致灾难
+（"它说发成功了"结果没有），低估导致弃用（"这玩意不可靠"再也不用）。校准三手段：
+<strong>① 证据呈现</strong>（"已发布 ✓ 回读创作者中心确认"——readback 的 verified 就是给用户看的证据，
+而非 agent 的自我报告）；<strong>② 不确定说不确定</strong>（unverified 如实显示，不粉饰成成功——
+一次性粉饰换来的信任，一次事故连本带利吐出来）；<strong>③ 失败带原因和出路</strong>
+（SOUL.md："实话实说卡在哪，再给个能走的替代路子"）。SOUL 里那句
+"务实、诚实：先尽力做，做不到或不确定才直说，不粉饰、不编数据"——是人格层写下的 UX 契约。</p>
+
+<h2>六、内部机器不可见</h2>
+<p>内部机制不该暴露给用户：Easel 的 TURN_REMINDER 每轮注入但对用户不可见（前端只显示用户原文）；
+对话附件的内部路径不复述；对外发布的内容绝不带工具痕迹（A12 出站闸门的 UX 侧面）。
+原则：<strong>用户要的是结果和过程感，不是管道日志</strong>——把 ANSI 色码和 traceback 直接怼给用户，
+是工程师审美不是产品。</p>
+
+<h2>七、常见踩坑</h2>
+<p><strong>坑 1：无过程反馈。</strong>同步等待 20 分钟白屏——哪怕加一行"正在执行第 3/8 步"。
+<strong>坑 2：开放题问询。</strong>"你想怎么做？"——用户请 agent 就是不想自己做决定；
+给 2–3 个带推荐的选项。<strong>坑 3：把不确定说成确定。</strong>为了一次性讨好用户，
+把 unverified 说成"发布成功"——信任崩塌只要一次。</p>
+
+<h2>八、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<h2>九、出口检验</h2>
+<p>给"自动订机票 agent"设计交互方案：四个环节（搜票→选票→支付→出票确认）
+各配什么反馈/问询/确认/证据呈现？哪个环节必须人确认、其余怎么做到少而重？
+发到对话里我批改。</p>
+
+<footer class="nav">
+  <a href="0043-a12-planning.html">← A14 规划与长任务</a> · 下一课：<a href="0046-a15-browser.html">A16 浏览器自动化</a> ·
+  <a href="../reference/syllabus.html">大纲</a><br>
+  有疑问随时问老师。
+</footer>
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. agent UX 与普通软件 UX 的本质区别是？",
+  opts: ["管理委托关系而非操作", "界面的配色要求不同", "不需要考虑加载速度"],
+  answer: 0,
+  why: "用户把决策权部分交给机器——UX 的使命是让委托知情、可控、可校准。"
+});
+Quiz.render("q2", {
+  q: "2. 发布确认界面应该展示什么？",
+  opts: ["将要发布的内容清单", "一个确定或取消按钮", "完整的执行日志流水"],
+  answer: 0,
+  why: "dry-run 预览给决策所需的最小信息集：用户要判断'内容对不对'，不是'确定吗'。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

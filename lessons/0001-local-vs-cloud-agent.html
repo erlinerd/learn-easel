@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 1 课 · Easel 是端侧还是云端 agent？</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 第 1 课</div>
+  <h1>Easel 是端侧 agent 还是云端 agent？</h1>
+  <p class="src">5 分钟 · 学会一个可迁移的判定框架，并坐实到一个真实仓库</p>
+</header>
+
+<div class="verdict">
+  <strong>先给结论：</strong>Easel 是<strong>「端侧 harness + 云端大脑」</strong>的 local-first agent。
+  编排、工具、状态全在你本机；只有模型推理（和可选的 AI 生图/视频/音乐）调云端 API。
+  它没有任何自有云端编排服务。
+</div>
+
+<h2>一、为什么"端 / 云"二分太粗</h2>
+<p>"agent 在哪"是个坏问题，因为一个 agent 至少由五块组成，分布在不同机器上。
+好问题是把五块拆开，逐个问<strong>"这个进程 / 这份数据在哪台机器上"</strong>：</p>
+
+<table>
+  <tr><th>组件</th><th>Easel 的实现</th><th>在哪跑</th></tr>
+  <tr><td><strong>编排 / Agent 循环</strong></td><td>OpenClaw gateway 进程</td><td class="mono">本机 loopback:18789</td></tr>
+  <tr><td><strong>工具执行</strong></td><td>48 个确定性 Python 脚本、FFmpeg、Playwright 浏览器发布</td><td>本机</td></tr>
+  <tr><td><strong>状态与记忆</strong></td><td>会话 <code>~/.openclaw-easel/</code>、登录态 <code>~/.easel-browser-profiles/</code>、画像 <code>profiles/</code>、产物 <code>outputs/</code></td><td>本机文件系统</td></tr>
+  <tr><td><strong>模型推理</strong></td><td>Claude / GPT / Gemini API</td><td class="mono">云端 API</td></tr>
+  <tr><td><strong>重资源生成</strong>（可选）</td><td>AI 视频 / 音乐 / TTS 服务</td><td class="mono">云端 API</td></tr>
+</table>
+
+<aside class="note">前两行决定分类。模型在云端是当今常态——Claude Code、Codex CLI 也都这样，
+没人因此把它们叫"云端 agent"。</aside>
+
+<h2>二、代码级证据（三处就够）</h2>
+<pre><code># ① gateway 只绑回环 —— 编排层不出本机
+$ grep "bind" scripts/gateway.sh
+openclaw --profile easel gateway run --force --bind loopback   # :136
+
+# ② Web 流式靠 tail 本机文件 —— 进程间通信用文件，纯端侧思维
+#    gateway 写 /tmp/easel-raw-stream.jsonl，web 后端 tail 它转 SSE
+
+# ③ 唯一的对外监听是 Web UI，且注释写明理由（Docker 端口转发兼容）
+$ sed -n '4060p' web/app.py
+# 监听 0.0.0.0（非仅回环）是为了兼容 Docker/远程容器端口转发访问 Easel 的场景</code></pre>
+<p>登录态、会话历史、平台 Cookie 全部落在 <code>~/.easel-browser-profiles/</code> 和
+<code>~/.openclaw-easel/</code>——这些是组件 2、3 在端侧的<strong>数据证据</strong>。</p>
+
+<h2>三、为什么 Easel 必须端侧（这才是考点）</h2>
+<p>它的核心工作——替你发布小红书、抖音——天然要求三样<strong>云端 agent 拿不到的东西</strong>：</p>
+<p><strong>① 你的登录态。</strong>发布靠你本机浏览器里的平台 Cookie；云端沙箱没有"你的"身份。<br>
+<strong>② 你的出口 IP。</strong>平台风控盯机房 IP（Easel 代码里就处理小红书"IP 存在风险"错误码 300012）；
+你家的 IP 反而干净。<br>
+<strong>③ 大媒体文件的零上传。</strong>视频剪辑在本地 FFmpeg 完成，几十 GB 素材不用先传云端。</p>
+<p>顺带得到隐私承诺："私人助手"——账号数据不出本机，只有发布的内容本身和 LLM 请求出去。</p>
+
+<aside class="note">边界提醒：端侧 ≠ 与世隔绝。Web UI 监听 <code>0.0.0.0</code>（局域网可访问），
+所有云端调用都是出站连接；公众号发布甚至要求固定出口 IP（项目为此起了本地代理钉死节点）。
+"端侧"说的是<strong>编排与状态</strong>，不是网络隔绝。</aside>
+
+<h2>四、检索练习</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+<div id="q3"></div>
+
+<h2>五、下一步</h2>
+<p><strong>一手源推荐：</strong>打开本地克隆
+<code>/Users/lei/Code/Projects/easel-repo/scripts/gateway.sh</code>，通读一遍 176 行——
+你会看到端侧 agent 的完整生命周期管理（拉起 adapter、导出流式环境变量、setsid 剥离启动、healthz 探活）。
+比任何二手讲解都扎实。</p>
+<p>配套速查表：<a href="../reference/agent-deployment-taxonomy.html">Agent 部署形态分类法</a>（可打印）。</p>
+
+<footer class="nav">
+  任何不清楚的地方，直接回对话里问你的 agent 老师——追问是最快的学习路径。<br>
+  下一课：<a href="0002-agent-anatomy.html">Agent 的解剖学——Easel 是怎么构建的</a>。
+</footer>
+
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. Easel 的 OpenClaw gateway 监听在哪个地址？",
+  opts: ["回环地址 127.0.0.1", "全网卡 0.0.0.0", "公网固定 VPS 地址"],
+  answer: 0,
+  why: "scripts/gateway.sh:136 写死 --bind loopback。0.0.0.0 的是 Web UI（7860），不是 gateway。"
+});
+Quiz.render("q2", {
+  q: "2. 判定一个 agent 的部署形态，最可靠的证据是什么？",
+  opts: ["编排与工具进程在哪台机器跑", "大模型推理在哪家服务商跑", "界面网页从哪个域名加载出来"],
+  answer: 0,
+  why: "组件 1–3（编排/工具/状态）决定分类；模型在云端是常态，界面更是表面现象。"
+});
+Quiz.render("q3", {
+  q: "3. 某云端托管 agent 也能自动发小红书，它与 Easel 的本质差别是？",
+  opts: ["浏览器进程跑在谁的电脑上", "自动化脚本用哪个框架写成", "发布步骤要不要用户先确认"],
+  answer: 0,
+  why: "端侧 agent 用你本机浏览器里的登录态和家庭 IP；云端托管用沙箱浏览器和机房 IP——这是风控与隐私差异的根源。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 4 课 · 从哪里开始读：一份精读路线图</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="course">
+  <div class="kicker">Easel 架构课程 · 第 4 课</div>
+  <h1>从哪里开始读：源码精读路线图</h1>
+  <p class="src">5 分钟读完路线 · 全程约 3 小时精读 · 本地代码都在你的机器上</p>
+</header>
+
+<div class="verdict">
+  <strong>答案先行：</strong>今天只读一站——
+  <code>~/Code/Projects/openclaw-src/packages/agent-core/src/agent-loop.ts</code> 的
+  <strong>第 214–436 行（runLoop 主循环）</strong>，约 200 行。别从头读文件，别读整个仓库；
+  带着第 3 课的七步骨架进去，出来能徒手写出 loop 伪代码，第一站就完成了。
+</div>
+
+<h2>三条读法原则（比路线更重要）</h2>
+<p><strong>① 永远带着一个问题进去。</strong>每站只回答一个问题，答出来就走。<br>
+<strong>② 折叠所有不服务当下问题的东西。</strong>类型体操、hook 细节、错误分支——第一遍全部跳过，
+第二遍自然读懂。<br>
+<strong>③ 任何一处卡超过 15 分钟就标记跳走。</strong>卡住说明缺前置知识，硬读是浪费；
+后面某站会把它变简单。</p>
+
+<h2>五站路线（按依赖顺序，不按目录顺序）</h2>
+<table>
+  <tr><th>站</th><th>读什么（file:line 已核实）</th><th>带进去的问题</th><th>时长</th></tr>
+  <tr>
+    <td><strong>1</strong></td>
+    <td class="mono">openclaw-src/packages/agent-core/src/agent-loop.ts:214-436</td>
+    <td>七件事各在哪几行发生？<code>hasMoreToolCalls</code> 怎么算出来（:317）？</td>
+    <td>60 min</td>
+  </tr>
+  <tr>
+    <td><strong>2</strong></td>
+    <td class="mono">同目录 agent-stream-response.ts:286-357</td>
+    <td>流式事件怎么变成工具执行？"流中执行"和"流后执行"差在哪？</td>
+    <td>30 min</td>
+  </tr>
+  <tr>
+    <td><strong>3</strong></td>
+    <td class="mono">easel-repo/web/app.py:2051-2470</td>
+    <td>浏览器断开为什么 agent 还能跑完？runId 闩锁（:2361）怎么隔离并发会话？</td>
+    <td>30 min</td>
+  </tr>
+  <tr>
+    <td><strong>4</strong></td>
+    <td class="mono">openclaw-src …/attempt-system-prompt-prepare.ts:244-301<br>＋ easel-repo/openclaw/workspace/AGENTS.md</td>
+    <td>AGENTS.md/SOUL.md 在哪一行被拼进 system prompt？稳定前缀为什么放前面？</td>
+    <td>45 min</td>
+  </tr>
+  <tr>
+    <td><strong>5</strong></td>
+    <td class="mono">openclaw-src …/run/attempt.ts:331-350<br>＋ agent-session-compaction.ts:490 起</td>
+    <td>工具目录怎么装配？compaction 触发后历史发生了什么？</td>
+    <td>弹性</td>
+  </tr>
+</table>
+
+<aside class="note">本地图谱：<code>openclaw-src</code> 已从 /tmp 挪到
+<code>~/Code/Projects/openclaw-src</code>（/tmp 重启即丢）。Easel 在
+<code>~/Code/Projects/easel-repo</code>。两份都是纯只读精读，放心看。</aside>
+
+<h2>第一站的操作细节（今天做这个）</h2>
+<ol>
+  <li>开两个窗口：左边 <code>agent-loop.ts</code> 跳到 <strong>214 行</strong>；右边本课的骨架图（或第 3 课）</li>
+  <li>逐段往下读，在代码旁标注七件事的行号（① abort :218 → ② commit :191 → ③ stream :252 →
+     ④ stopReason :281 → ⑤ 回填 :327 → ⑥ turn_end :332 → ⑦ steering :414）</li>
+  <li>读到 <strong>:317</strong> 停一下：<code>hasMoreToolCalls</code> 的三段式布尔表达式是全文件的"心脏"，
+     逐项弄懂 <code>continuationRequired</code> / <code>endTurn===false</code> / <code>batch.terminate</code></li>
+  <li>读完 :436 出循环的 <code>agent_end</code>，合上笔记，<strong>手写 10 行伪代码</strong>——
+     写不出来就说明还没读完，回去补</li>
+</ol>
+
+<h2>读完后回来检验</h2>
+<div id="q1"></div>
+<div id="q2"></div>
+
+<footer class="nav">
+  读完任何一站，随时回对话里汇报你的发现或卡点——讲给我听是最好的检索练习。<br>
+  全程总路线（阶段 0–5 可勾选进度）：<a href="../reference/reading-roadmap.html">总阅读路线图</a> ·
+  前课：<a href="0003-agent-loop.html">Loop 的实现</a> · 速查：<a href="../reference/agent-loop-cheatsheet.html">Loop 解剖</a>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+<script>
+Quiz.render("q1", {
+  q: "1. 打开 agent-loop.ts，正确的读法是什么？",
+  opts: ["跳到 214 行带骨架读 200 行", "从第 1 行按顺序通读全文", "先读完 1562 行再回来读主循环"],
+  answer: 0,
+  why: "按调用链读、带问题读；文件头部的类型定义和常量服务于主循环，先看主循环才知道它们为何存在。"
+});
+Quiz.render("q2", {
+  q: "2. 在某段代码卡住超过 15 分钟，正确做法是什么？",
+  opts: ["标记跳走先继续读后面", "反复重读直到完全弄懂", "放弃这次源码精读计划"],
+  answer: 0,
+  why: "卡住通常说明缺前置知识；后面的站点会把它变简单，第二遍回来自然读懂。"
+});
+</script>
+<script src="../assets/sidebar.js"></script>
+</body>
+</html>
