@@ -10,7 +10,7 @@
 <header class="course">
   <div class="kicker">前置课 · 第二部分 Agent · A3</div>
   <h1>循环：agentic loop 的本质与三条铁律</h1>
-  <p class="src">20 min · 概念层的 loop；OpenClaw 的 1562 行实现在正课 M6</p>
+  <p class="src">20 min · 概念层的 loop；OpenClaw 的 1562 行实现在正课 M6·L16</p>
 </header>
 
 <p class="src">🎒 预备知识：完成上一课「A2 能力封装」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
@@ -26,7 +26,7 @@
     决策：LLM 决定下一步（调用工具 / 给出回答 / 请求帮助）
     行动：harness 执行决策，改变真实世界
     停止：回答完成 / 达到步数上限 / 超时 / 用户中断</code></pre>
-<p>A1 那 20 行代码就是它的直译。OpenClaw 的 1562 行版本只是加了：
+<p>A1 那 30 行代码就是它的直译。OpenClaw 的 1562 行版本只是加了：
 流式（边生成边执行工具）、并发（多会话隔离）、compaction（窗口管理）、钩子（审批/改写）——
 <strong>骨架一模一样</strong>。所以这课的概念你吃透了，正课 L16 只是去核对"哪些铁律在哪些行"。</p>
 
@@ -79,7 +79,7 @@ OpenClaw 连 compaction 都是一条追加记录（正课 L18）。</p>
 <h2>五、常见踩坑</h2>
 <p><strong>坑 1：工具结果不截断不摘要</strong>——三轮大结果就把窗口吃光，loop 自己撑死自己。</p>
 <p><strong>坑 2：把 compaction 当失败。</strong>压缩发生时不要终止会话——它是正常维护，
-压完 continue() 无缝续跑（正课 L18）。</p>
+压缩完成后自动无缝续跑（正课 L18）。</p>
 <p><strong>坑 3：步数上限设太大。</strong>上限是"失控保险丝"不是"任务预算"——正常任务 10 步内，
 上限 30 就够；设 1000 等于没有。</p>
 

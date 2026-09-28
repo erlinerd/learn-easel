@@ -42,7 +42,7 @@
 
 <h2>三、为什么发布脚本放 shared/ 而不是技能目录</h2>
 <p>xhs_publish.py 的调用方有<strong>两个</strong>：agent（按 SKILL.md 指引调用）和
-Web 后端（POST /api/publish/xhs 端点直接 Popen 它，正课 L09 的端点地图会看到）。
+Web 后端（POST /api/publish/xhs 端点直接 Popen（Python 启动子进程执行）它，正课 L09 的端点地图会看到）。
 如果脚本放技能目录里：① Web 后端要硬编码一个藏在技能目录深处的路径；② 改一处 bug 要记得
 另一个调用方也受影响；③ 复用给下一个平台技能要跨目录引用。<strong>共享层 = 多调用方的单点实现</strong>
 ——48 个共享脚本（约 2.3 万行）就是整个执行层的"标准库"。判据：一个脚本被两个以上入口用，

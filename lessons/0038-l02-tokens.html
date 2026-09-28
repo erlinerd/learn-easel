@@ -20,7 +20,7 @@
 </div>
 
 <h2>一、tokenizer：模型眼中的文字</h2>
-<p>模型不读"字"，读 <strong>token</strong>——tokenizer（主流是 BPE 类算法）把文本切成高频子串碎片。
+<p>模型不读"字"，读 <strong>token</strong>——tokenizer（主流是 BPE（字节对编码）类算法）把文本切成高频子串碎片。
 手感数字（做预算必备）：</p>
 <pre><code>英文：1 token ≈ 4 个字符 ≈ 0.75 个单词（"internationalization" 可能占 5-6 个 token）
 中文：常用字多为一字 1 token，生僻词/专业词 1 字 2-3 token
@@ -51,7 +51,7 @@
 省钱开关：prompt cache 命中部分约 1/10 价（各家略有差异）</code></pre>
 <p>这就是 A5（上下文工程）四原则的经济学根源：稳定前缀为缓存、渐进披露为省输入、
 压缩历史为斩复利。<strong>KV cache 与 prompt cache 的区别</strong>顺带说清：
-KV cache 是推理引擎层的注意力复用（微秒级提速），prompt cache 是它在计费层的产品化——
+KV cache 是推理引擎层对重复计算的消除（微秒级提速），prompt cache 是它在计费层的产品化——
 工程上你只需要管"前缀稳定"这一件事，两个都会来。</p>
 
 <h2>四、常见踩坑</h2>
@@ -69,7 +69,7 @@ KV cache 是推理引擎层的注意力复用（微秒级提速），prompt cach
 <h2>六、出口检验</h2>
 <p>算一笔账：一个 agent，system 800 token、8 个工具 schema 共 1200、每轮工具结果 1500、
 输出平均 800。第 6 轮结束时累计输入 token 是多少？如果第 4 轮起做了"历史摘要压缩到 1000"呢？
-（答案发到对话里，我核对你的算式。）</p>
+（按第三节复利示例的口径：累计＝各轮输入之和。答案发到对话里，我核对你的算式。）</p>
 
 <footer class="nav">
   <a href="0025-c01-llm.html">← L1</a> · 下一课：<a href="0039-l03-sampling.html">L3 采样与参数</a> ·

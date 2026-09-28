@@ -85,6 +85,31 @@
 <tr><td>symlink</td><td>软链接：指向另一目录的快捷方式。副本会分叉，链接不会。</td></tr>
 </table>
 
+
+<h2>补充词条（评审后补齐）</h2>
+<table class="g">
+<tr><td>LLM</td><td>Large Language Model，大语言模型。</td></tr>
+<tr><td>权重（weights）</td><td>模型内部的可调数值参数，训练学到的"知识"存在这里；推理阶段冻结不变。</td></tr>
+<tr><td>对齐（alignment）</td><td>训练时教模型守规矩、符合人类意图的过程。</td></tr>
+<tr><td>RL / 强化学习</td><td>Reinforcement Learning：靠奖励信号训练模型的方法；推理模型多用它训练。</td></tr>
+<tr><td>BPE</td><td>字节对编码：主流 tokenizer 算法，把文本切成高频子串碎片。</td></tr>
+<tr><td>provider</td><td>模型 API 服务商（Anthropic/OpenAI 等）。</td></tr>
+<tr><td>KV cache</td><td>推理引擎层对重复计算的消除，微秒级提速；prompt cache 是它在计费层的产品化。</td></tr>
+<tr><td>tool-search</td><td>工具太多时先搜后调的延迟加载机制，缓解 schema 常驻成本。</td></tr>
+<tr><td>manifest</td><td>Easel 跨层任务的薄索引文件：每步登记"产物路径 + 一句结论 + 状态"。</td></tr>
+<tr><td>RRF</td><td>倒数排名融合：合并向量与关键词两路检索结果的算法。</td></tr>
+<tr><td>HyDE</td><td>让模型先虚构理想答案、拿虚构答案去检索的查询改写技巧。</td></tr>
+<tr><td>JSON mode</td><td>API 层保证输出语法合法 JSON 的受限解码模式；字段正确性仍需校验。</td></tr>
+<tr><td>pydantic</td><td>Python 最常用的数据校验库：用类型声明自动校验 JSON。</td></tr>
+<tr><td>lane</td><td>OpenClaw 的会话队列：每会话一个 lane 并发=1，跨会话并行。</td></tr>
+<tr><td>熔断</td><td>依赖连续失败就暂时跳过：闭合（正常）→打开（走备用）→半开（试探）。</td></tr>
+<tr><td>回退链</td><td>主路径失败切换备用路径；回退只在新会话粒度，会话中途绝不换边。</td></tr>
+<tr><td>accessibility 快照</td><td>浏览器页面的无障碍树摘要——给模型"看"网页的降噪表示。</td></tr>
+<tr><td>headless / 有头</td><td>无头浏览器不显示窗口（省资源、指纹略异）；有头即正常窗口。</td></tr>
+<tr><td>SOUL.md / AGENTS.md</td><td>OpenClaw 工作区的两个人格/规则常驻文件：SOUL 管人格语气，AGENTS 管行为规则。</td></tr>
+<tr><td>课号约定</td><td>L1–L7＝前置第一部分；A1–A17＝前置第二部分；正课＝L01–L20（两位数）。文件名是历史编号，以侧边目录为准。</td></tr>
+</table>
+
 <footer class="nav">
   <a href="syllabus.html">← 返回大纲</a> · <a href="../lessons/0000-start-here.html">第 0 课·开始这里</a><br>
   发现缺词或解释不清，随时回对话告诉老师。

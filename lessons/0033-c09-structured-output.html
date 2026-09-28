@@ -34,10 +34,11 @@
 这是从"应该对"到"必然对"的最后一道闸。</p>
 
 <h2>二、第五级的参考实现（可直接抄）</h2>
-<pre><code>from pydantic import BaseModel, ValidationError   # pydantic：Python 最常用的数据校验库，用类型声明自动校验 JSON
+<pre><code>from typing import Literal
+from pydantic import BaseModel, ValidationError   # pydantic：Python 最常用的数据校验库，用类型声明自动校验 JSON
 
 class Verdict(BaseModel):
-    overall: str          # pass | warn | fail
+    overall: Literal["pass", "warn", "fail"]   # 枚举用 Literal：pydantic 会真的拦截越界值
     issues: list[str]
     top_fix: str
 

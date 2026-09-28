@@ -16,7 +16,7 @@
 <p class="src">🎒 预备知识：完成上一课「L4」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
 <div class="verdict">
   <strong>本课唯一结论：</strong>模型的能力边界由三个来源决定——<strong>训练数据</strong>（知道什么，有截止日）、
-  <strong>训练方式</strong>（对齐带来的行为特征，包括幻觉倾向）、<strong>上下文</strong>（当场能"学"到什么）。
+  <strong>训练方式</strong>（对齐（alignment：训练时教模型守规矩、符合人类意图的过程）带来的行为特征，包括幻觉倾向）、<strong>上下文</strong>（当场能"学"到什么）。
   把每个边界配对一种工程对策，是 agent 设计者的基本功。
 </div>
 
@@ -47,7 +47,7 @@ GPT-3 论文标题即 "Language Models are Few-Shot Learners"。关键认知：
 <h2>四、思维链（CoT）与推理模型</h2>
 <p><strong>CoT</strong>（Wei et al. 2022）：让模型"一步步想"再答，多步推理正确率显著提升——
 因为每步推理 token 给了模型更多计算空间。零成本版本是加一句"先分析再给结论"。
-<strong>推理模型</strong>（o 系/R1/带 thinking 的模型）把这个内化：RL 训练模型生成超长内部思考链，
+<strong>推理模型</strong>（o 系/R1/带 thinking 的模型）把这个内化：强化学习（RL）训练模型生成超长内部思考链，
 按 thinking token 计费。何时值得：<strong>多步推理、规划、数学、代码调试</strong>；
 何时浪费：<strong>分类、抽取、格式转换</strong>——thinking 烧十倍 token 换不回质量。
 Easel 的场景（文案、路由、流程执行）大多不需要重型推理，但发布决策、评分类任务受益。</p>

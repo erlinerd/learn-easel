@@ -40,7 +40,7 @@ version、tags、allowed-tools 等——禁令本身是设计：把"感觉有用
 <table>
   <tr><th>层</th><th>何时进上下文</th><th>离开时</th></tr>
   <tr><td>frontmatter</td><td>每轮常驻</td><td>会话结束</td></tr>
-  <tr><td>SKILL.md 主体</td><td>模型选定该技能时</td><td>compaction 或会话结束</td></tr>
+  <tr><td>SKILL.md 主体</td><td>模型选定该技能时</td><td>compaction（历史压缩，正课 L18 详述）或会话结束</td></tr>
   <tr><td>references/</td><td>SKILL.md 按引用指名读取时</td><td>同上</td></tr>
   <tr><td>scripts/</td><td><strong>永不进 prompt</strong>，只被执行</td><td>—</td></tr>
 </table>

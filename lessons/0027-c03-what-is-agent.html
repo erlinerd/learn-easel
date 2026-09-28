@@ -9,8 +9,8 @@
 <body>
 <header class="course">
   <div class="kicker">前置课 · 第二部分 Agent · A1</div>
-  <h1>Agent 是什么：一个公式、三个邻居、20 行代码</h1>
-  <p class="src">20 min · 这 20 行代码是你毕业设计（L20）的种子</p>
+  <h1>Agent 是什么：一个公式、三个邻居、30 行代码</h1>
+  <p class="src">20 min · 这 30 行代码是你毕业设计（L20）的种子</p>
 </header>
 
 <p class="src">🎒 预备知识：完成上一课「L7」（零基础入口：<a href="0000-start-here.html">第 0 课</a>）</p>
@@ -20,7 +20,7 @@
   agent 是模型现场决策的循环。
 </div>
 
-<h2>一、20 行真实可跑的最小 agent（工作示例）</h2>
+<h2>一、30 行真实可跑的最小 agent（工作示例）</h2>
 <p>别背定义，读代码。下面是一个真的能跑的最小 agent（OpenAI 兼容 API + 一个工具），
 注意它怎么体现公式四要素，以及 A3 三条铁律的影子：</p>
 <pre><code>from openai import OpenAI
@@ -53,9 +53,9 @@ for step in range(10):                          # 铁律③：步数上限，防
         messages.append({"role": "tool", "tool_call_id": call.id,
             "content": execute(call.function.name,
                                json.loads(call.function.arguments))})</code></pre>
-<p>对照公式读：<strong>LLM</strong>（第 15 行）、<strong>工具</strong>（TOOLS + execute）、
+<p>对照公式读：<strong>LLM</strong>（<code>chat.completions.create</code> 那次调用）、<strong>工具</strong>（<code>TOOLS</code> 与 <code>execute</code>）、
 <strong>循环</strong>（for + 回填）、<strong>停止条件</strong>（第 19 行 no tool_calls / 第 12 行步数上限）。
-这 20 行就是所有 agent 的胚胎——OpenClaw 那 1562 行（正课 L16）是给它加上流式、并发、
+这 30 行就是所有 agent 的胚胎——OpenClaw 那 1562 行（正课 L16）是给它加上流式、并发、
 compaction、钩子之后的成人版。</p>
 
 <h2>二、三个邻居（辨析：什么不是 agent）</h2>
@@ -87,7 +87,7 @@ Easel 是 agent，因为"发一条小红书"的路径（先查热点还是先写
 <h2>五、出口检验</h2>
 <p>判断三个场景该用 chatbot / workflow / agent 哪个，并各说一句理由：
 ① 每天把日报翻译成英文；② 帮用户找到并修复仓库里的 bug；③ 陪练英语口语。
-然后回答：上面 20 行代码里，哪一行如果删掉，它就从 agent 退化成了 chatbot？发到对话里我批改。</p>
+然后回答：上面 30 行代码里，哪一行如果删掉，它就从 agent 退化成了 chatbot？发到对话里我批改。</p>
 
 <footer class="nav">
   <a href="0026-c02-function-calling.html">← L7</a> · 下一课：<a href="0028-c04-tool-mcp-skill.html">A2 Tool / MCP / Skill</a> ·

@@ -22,7 +22,7 @@
 </div>
 
 <h2>一、三代演化的历史逻辑（每代解决上一代的什么痛）</h2>
-<p><strong>第一代：函数工具（2023）。</strong>L7 讲的机制。痛：每个 harness 自己注册函数，
+<p><strong>第一代：函数工具（2023）。</strong>L7 讲的机制。痛：每个 harness（模型外的运行时容器，A17 详述）自己注册函数，
 复用靠复制代码。更大的痛在后面——<strong>schema 常驻</strong>。</p>
 <p><strong>第二代：MCP（2024）。</strong>Model Context Protocol 把"工具服务器"标准化：
 工具以独立进程运行，harness 作为 client 连接（本地 stdio 或远程 HTTP），自动发现对方的
@@ -43,7 +43,7 @@ harness 只把每个技能的 frontmatter（markdown 文件顶部两行 --- 之�
   常驻 = 114 × frontmatter 一行 ≈ 114 × 10 token ≈ 1100 token / 每轮
   触发 2 个技能时另加 ≈ 2 × 2000（SKILL.md 上限 200 行）——用才付</code></pre>
 <p>差距看着只有两倍多，但真正的量级差在<strong>能力规模上限</strong>：路线 A 到 500 个工具时
-常驻 1.2 万 token（窗口的 1/8 永远被吃掉），路线 B 到 500 个技能时常驻仍只有约 5 千 token，
+常驻 1.2 万 token（约 1/10（按 128K 窗口）永远被吃掉），路线 B 到 500 个技能时常驻仍只有约 5 千 token，
 且每个能力的"说明书"可以有 200 行深度。<strong>Skill 本质是把 schema 的'全量常驻'换成了'索引常驻 + 正文按需'</strong>——
 和操作系统的虚拟内存是同一个思想：页表常驻，页面按需调入。</p>
 

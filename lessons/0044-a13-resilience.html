@@ -35,7 +35,7 @@
 <h2>二、失败分类学（对症才能下药）</h2>
 <table>
   <tr><th>层</th><th>典型错误</th><th>策略</th></tr>
-  <tr><td><strong>Provider 层</strong></td><td>429 限流、5xx、超时、上下文溢出</td><td>429=退避等待；5xx=有限重试；溢出=压缩后重试（A3/L18）</td></tr>
+  <tr><td><strong>Provider 层</strong></td><td>429 限流、5xx、超时、上下文溢出</td><td>429=退避等待；5xx=有限重试；溢出=压缩后重试（A3/正课 L18）</td></tr>
   <tr><td><strong>工具层</strong></td><td>脚本失败、选择器失效、文件缺失</td><td>错误回填给模型自我纠错（A3 铁律①）；连败设止血线</td></tr>
   <tr><td><strong>Harness 层</strong></td><td>gateway 死了、进程崩、流中断</td><td>健康检查 + 回退链 + 会话自愈</td></tr>
   <tr><td><strong>业务层</strong></td><td>结果未核实、质量不达标</td><td>不掩盖：标注 unverified / 返工一次 / 上报用户（A11/A12）</td></tr>

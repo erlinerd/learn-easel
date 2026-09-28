@@ -65,7 +65,7 @@ L02 断了是"命令没反应"，这里断了是"技能不存在"，L09 会看�
 <h2>五、常见踩坑</h2>
 <p><strong>坑 1：同步用复制不用链接。</strong>outputs/ 复制进 workspace = 两份产物分叉，
 "我明明生成了怎么找不到"。<strong>坑 2：升级 OpenClaw 后不重新 sync。</strong>布局变了，
-旧 workspace 里的技能成孤儿——doctor 会检查"技能是否同步进 agent 实际读的 workspace"
+旧 workspace 里的技能成孤儿——doctor（easel 的环境自检命令）会检查"技能是否同步进 agent 实际读的 workspace"
 （这就是 doctor 检查清单里那条的意义）。<strong>坑 3：自己的 agent 也硬编码路径。</strong>
 issue #19 人人会踩——写"问运行时"的三行代码，省未来三天的灵异调试。</p>
 

@@ -65,7 +65,7 @@ Easel/OpenClaw 侧的三层留痕：transcript jsonl 只追加可回放（L18）
 下次同样输入就翻车。轨迹检查点必须建。</p>
 <p><strong>坑 2：eval 集过拟合。</strong>照着 20 个测试样例调 prompt 到全绿——新输入立刻退化。
 eval 集要持续补真实失败案例（每上线翻车一个，回填一个 eval）。</p>
-<p><strong>坑 3：用最强模型 judge 一切。</strong>judge 比被评对象弱才有意义的问题不大，
+<p><strong>坑 3：误以为 judge 越强越好。</strong>judge 不必用最强模型——比被评对象弱一档通常够用；
 但注意 judge 与被评同源时的自偏好——换家 provider 做 judge 是便宜的解毒剂。</p>
 
 <h2>五、检索练习</h2>
