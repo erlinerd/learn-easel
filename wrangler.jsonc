@@ -1,0 +1,15 @@
+{
+  "name": "learn-easel",
+  "compatibility_date": "2026-10-04",
+  "workers_dev": true,
+  "assets": {
+    "directory": ".",
+    "include": ["**/*.html", "**/*.css", "**/*.js", "**/*.png", "**/*.jpg", "**/*.svg", "**/*.ico", "**/*.woff2", "**/*.json"],
+    "exclude": ["wrangler.jsonc", ".gitignore", "**/node_modules/**"],
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  "routes": [
+    { "pattern": "learn-easel.erlinerd.com", "custom_domain": true, "zone_id": "37cc6bd66f3849d28a3cf36161c756dc" }
+  ]
+}
