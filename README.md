@@ -27,3 +27,4 @@ assets/       共享样式、测验组件、侧边目录
 ## 部署
 
 纯静态站点，Vercel/Netlify/Cloudflare Pages 零配置可直接部署（无构建命令，输出目录 = 根）。
+
