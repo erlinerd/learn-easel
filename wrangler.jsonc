@@ -4,8 +4,6 @@
   "workers_dev": true,
   "assets": {
     "directory": ".",
-    "include": ["**/*.html", "**/*.css", "**/*.js", "**/*.png", "**/*.jpg", "**/*.svg", "**/*.ico", "**/*.woff2", "**/*.json"],
-    "exclude": ["wrangler.jsonc", ".gitignore", "**/node_modules/**"],
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none"
   },
